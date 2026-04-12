@@ -2,6 +2,50 @@
     <img height="256px" src="https://amii.assets.unthrottled.io/visuals/mocking/aqua_mocking_laugh.gif" ></img>
 </div>
 
+## About this fork
+
+This repository is a **fork** of **[AMII](https://github.com/ani-memes/AMII)** (Anime Meme IDE Integration) from the [ani-memes](https://github.com/ani-memes) project, originally created by **[Unthrottled](https://github.com/Unthrottled)**. Upstream documentation and releases remain the reference for the stock plugin; changes specific to this fork are maintained here.
+
+### Install this fork from source (JetBrains IDEs)
+
+Use this when you want the plugin built from **this** repo instead of the Marketplace build.
+
+1. **Java for Gradle:** You do **not** need to install Java separately. JetBrains IDEs ship a **JBR** (JetBrains Runtime). Point `JAVA_HOME` at that JDK before running Gradle, then `./gradlew` will use it.
+
+   **macOS** (replace the app name with yours, e.g. `PhpStorm`, `IntelliJ IDEA`, `WebStorm`):
+
+   ```bash
+   export JAVA_HOME="/Applications/PhpStorm.app/Contents/jbr/Contents/Home"
+   export PATH="$JAVA_HOME/bin:$PATH"
+   java -version
+   ```
+
+   **Windows** (typical Toolbox / install layout; adjust the IDE folder):
+
+   ```bat
+   set JAVA_HOME=C:\Program Files\JetBrains\PhpStorm 2025.3\jbr
+   set PATH=%JAVA_HOME%\bin;%PATH%
+   java -version
+   ```
+
+   **Linux** (path varies by install; look for a `jbr` directory next to your IDE binaries).
+
+   In the IDE you can confirm the runtime: **Help → About** (some versions list the JBR path). If `java -version` works in that shell, you’re set.
+
+   *Only if you have no JetBrains IDE installed* do you need a standalone JDK (e.g. [Temurin 17+](https://adoptium.net/)).
+
+2. **Clone** this repository and open a terminal at the project root.
+3. **Build the plugin package:**
+   ```bash
+   ./gradlew buildPlugin
+   ```
+4. **Find the zip:** Gradle writes the installable archive under **`build/distributions/`** (for example `Anime Memes-<version>.zip`—the exact filename matches the plugin name and version from `gradle.properties`).
+5. **Install in your IDE:** **Settings** (Windows/Linux) or **Preferences** (macOS) → **Plugins** → **⚙️** (gear) → **Install Plugin from Disk…** → choose that **`.zip`** file → **Restart IDE** when prompted.
+
+This flow applies to IntelliJ IDEA, PhpStorm, WebStorm, Rider, PyCharm, and other JetBrains IDEs that use the same plugin system.
+
+---
+
 # AMII (Anime Meme IDE Integration)
 
 ![Build](https://github.com/ani-memes/AMII/workflows/Build/badge.svg)
