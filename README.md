@@ -6,6 +6,8 @@
 
 This repository is a **fork** of **[AMII](https://github.com/ani-memes/AMII)** (Anime Meme IDE Integration) from the [ani-memes](https://github.com/ani-memes) project, originally created by **[Unthrottled](https://github.com/Unthrottled)**. Upstream documentation and releases remain the reference for the stock plugin; changes specific to this fork are maintained here.
 
+**Doki Theme integration:** Discreet mode and related integration with Doki are aligned with **[Doki Theme v2](https://plugins.jetbrains.com/plugin/30534-doki-theme-v2)** on the JetBrains Marketplace only. The original *Doki Theme* plugin (`io.acari.DDLCTheme`) is a different product ID; use **Doki Theme v2** if you want this fork to cooperate with your theme install.
+
 ### Install this fork from source (JetBrains IDEs)
 
 Use this when you want the plugin built from **this** repo instead of the Marketplace build.
