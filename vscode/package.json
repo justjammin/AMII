@@ -1,0 +1,121 @@
+{
+  "name": "amii-vscode",
+  "displayName": "AMII — Anime Meme IDE Integration",
+  "description": "Your editor gets a companion (MIKU) that reacts to builds, tests, terminal commands and idling with anime memes.",
+  "version": "0.1.0",
+  "publisher": "justjammin",
+  "license": "Apache-2.0",
+  "icon": "media/icon.png",
+  "repository": { "type": "git", "url": "https://github.com/justjammin/amii" },
+  "engines": { "vscode": "^1.93.0" },
+  "categories": ["Other", "Themes"],
+  "keywords": ["anime", "memes", "fun", "waifu", "amii"],
+  "main": "./out/src/extension.js",
+  "activationEvents": ["onStartupFinished"],
+  "contributes": {
+    "commands": [
+      { "command": "amii.showMeme", "title": "Show Random Meme", "category": "AMII" },
+      { "command": "amii.relax", "title": "Relax (reset MIKU's frustration)", "category": "AMII" },
+      { "command": "amii.clear", "title": "Clear Memes", "category": "AMII" },
+      { "command": "amii.previousMeme", "title": "Show Previous Meme", "category": "AMII" },
+      { "command": "amii.toggleDiscreetMode", "title": "Toggle Discreet Mode", "category": "AMII" },
+      { "command": "amii.toggleMinimalMode", "title": "Toggle Minimal Mode", "category": "AMII" },
+      { "command": "amii.syncAssets", "title": "Synchronize Assets", "category": "AMII" },
+      { "command": "amii.rescanCustomAssets", "title": "Rescan Custom Assets", "category": "AMII" },
+      { "command": "amii.choosePreferredCharacters", "title": "Choose Preferred Characters", "category": "AMII" },
+      { "command": "amii.openSettings", "title": "Settings", "category": "AMII" },
+      { "command": "amii.testReaction", "title": "Simulate Event (debug)", "category": "AMII" }
+    ],
+    "viewsContainers": {
+      "panel": [{ "id": "amii", "title": "AMII", "icon": "media/icon.svg" }]
+    },
+    "views": {
+      "amii": [{ "type": "webview", "id": "amii.memeView", "name": "MIKU" }]
+    },
+    "configuration": {
+      "title": "AMII",
+      "properties": {
+        "amii.apiUrl": {
+          "type": "string",
+          "default": "https://amii.api.unthrottled.io/public/",
+          "markdownDescription": "Where asset definitions are queried. Point this at your own caching AMII API (see `api/` in the repo), e.g. `http://localhost:8080/public/`."
+        },
+        "amii.assetSource": {
+          "type": "string",
+          "default": "https://amii.assets.unthrottled.io",
+          "description": "Base URL that serves the meme images and audio."
+        },
+        "amii.displayMode": {
+          "type": "string",
+          "enum": ["beside", "panel"],
+          "enumDescriptions": [
+            "Open a small editor tab beside your code without stealing focus (closest to the IntelliJ overlay).",
+            "Show memes in the AMII view in the bottom panel."
+          ],
+          "default": "beside"
+        },
+        "amii.memeDisplayDurationSeconds": { "type": "number", "default": 40, "minimum": 1, "description": "How long a timed meme stays on screen." },
+        "amii.soundEnabled": { "type": "boolean", "default": true },
+        "amii.volume": { "type": "number", "default": 65, "minimum": 0, "maximum": 100 },
+        "amii.discreetMode": { "type": "boolean", "default": false, "description": "Silence MIKU entirely (moods still tracked when off)." },
+        "amii.minimalMode": { "type": "boolean", "default": false, "description": "Only react when the outcome changes (e.g. failing -> passing)." },
+        "amii.allowLewds": { "type": "boolean", "default": false, "description": "Allow suggestive memes." },
+        "amii.onlyCustomAssets": { "type": "boolean", "default": false },
+        "amii.customAssetsPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Folder of your own memes. Sub-folders named after a category (`celebration`, `frustration`, `smug`, ...) tag their contents."
+        },
+        "amii.preferredCharacters": { "type": "array", "items": { "type": "string" }, "default": [], "description": "Character names or ids to favour." },
+        "amii.blacklistedCharacters": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "amii.preferredGenders": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["female", "male", "other"] },
+          "default": ["female", "male", "other"]
+        },
+        "amii.enabledEvents": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["IDLE", "LOGS", "ON_DEMAND", "PROCESS", "STARTUP", "TASK", "TEST", "SILENCE"] },
+          "default": ["IDLE", "ON_DEMAND", "PROCESS", "STARTUP", "TASK", "TEST"],
+          "description": "Which events MIKU reacts to."
+        },
+        "amii.idleTimeoutMinutes": { "type": "number", "default": 5, "minimum": 1 },
+        "amii.silenceTimeoutMinutes": { "type": "number", "default": 20, "minimum": 1, "description": "Show a silent meme after this long without one (SILENCE event)." },
+        "amii.allowFrustration": { "type": "boolean", "default": true },
+        "amii.eventsBeforeFrustration": { "type": "number", "default": 5, "minimum": 1 },
+        "amii.probabilityOfFrustration": { "type": "number", "default": 75, "minimum": 0, "maximum": 100 },
+        "amii.allowedExitCodes": {
+          "type": "array", "items": { "type": "number" }, "default": [130],
+          "description": "Non-zero exit codes that are not failures (130 = Ctrl+C)."
+        },
+        "amii.positiveExitCodes": { "type": "array", "items": { "type": "number" }, "default": [], "description": "Extra exit codes that count as success." },
+        "amii.reactToTerminalCommands": {
+          "type": "boolean", "default": true,
+          "description": "React to commands run in the integrated terminal (requires shell integration)."
+        },
+        "amii.terminalCommandAllowList": {
+          "type": "array", "items": { "type": "string" },
+          "default": ["npm", "pnpm", "yarn", "bun", "node", "deno", "cargo", "go", "make", "gradle", "./gradlew", "mvn", "pytest", "python", "dotnet", "php", "composer", "jest", "vitest", "tsc", "docker", "flutter", "swift", "mix", "rake", "bundle"],
+          "description": "Only react to terminal commands starting with one of these (empty = every command). Keeps `ls`/`cd` from triggering memes."
+        },
+        "amii.logSearchTerms": { "type": "array", "items": { "type": "string" }, "default": [], "description": "Terminal output that should trigger an ALERT meme (LOGS event)." },
+        "amii.logSearchIgnoreCase": { "type": "boolean", "default": true },
+        "amii.showMood": { "type": "boolean", "default": true, "description": "Show MIKU's mood in the status bar." },
+        "amii.infoOnClick": { "type": "boolean", "default": true, "description": "Show which character/anime a meme is from when clicked." }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -watch -p .",
+    "test": "tsc -p . && node --test out/test/*.test.js",
+    "package": "vsce package",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "~1.93.0",
+    "@vscode/vsce": "^3.2.0",
+    "typescript": "^5.6.0"
+  }
+}

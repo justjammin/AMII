@@ -8,6 +8,13 @@ This repository is a **fork** of **[AMII](https://github.com/ani-memes/AMII)** (
 
 **Doki Theme integration:** Discreet mode and related integration with Doki are aligned with **[Doki Theme v2](https://plugins.jetbrains.com/plugin/30534-doki-theme-v2)** on the JetBrains Marketplace only. The original *Doki Theme* plugin (`io.acari.DDLCTheme`) is a different product ID; use **Doki Theme v2** if you want this fork to cooperate with your theme install.
 
+### VS Code port + caching API
+
+This fork also contains:
+
+- **[`vscode/`](vscode/)**: a TypeScript port of AMII for VS Code (same emotion engine; reacts to tasks, tests, terminal commands and idling). See [vscode/README.md](vscode/README.md).
+- **[`api/`](api/)**: a Rust (axum + moka) API that caches asset queries and media in front of the upstream AMII API. Point either plugin at it. See [api/README.md](api/README.md).
+
 ### Install this fork from source (JetBrains IDEs)
 
 Use this when you want the plugin built from **this** repo instead of the Marketplace build.
