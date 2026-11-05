@@ -58,7 +58,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const memes = new MemeService(
     getConfig,
     repo,
-    { resolveMedia: (c, p) => store.resolveMedia(c, p) }, // `store` is swapped when the API URL changes
+    // `store` is swapped when the API URL changes.
+    { resolveMedia: (c, p) => store.resolveMedia(c, p), resolveUrl: (u) => store.resolveUrl(u) },
     view,
     emit,
     log,
@@ -75,8 +76,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const sync = async (force: boolean) => {
     const defs = await store.loadAll(force);
     repo.index(defs);
+    repo.indexGiphy(config.giphyEnabled ? await store.loadGiphy(force) : []);
     const custom = await repo.scanCustom(config.customAssetsPath || undefined);
-    log(`Indexed ${defs.visuals.length} remote and ${custom} custom memes.`);
+    log(`Indexed ${repo.size} memes (${defs.visuals.length} AMII, ${custom} custom).`);
     return repo.size;
   };
 
@@ -98,7 +100,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       miku?.updateSettings(config.miku);
       renderStatus(miku!.mood);
       if (config.miku.discreetMode) memes.clear();
-      if (previous.apiUrl !== config.apiUrl || previous.assetSource !== config.assetSource) {
+      if (
+        previous.apiUrl !== config.apiUrl ||
+        previous.assetSource !== config.assetSource ||
+        previous.giphyEnabled !== config.giphyEnabled
+      ) {
         store = makeStore();
         void sync(true);
       } else if (previous.customAssetsPath !== config.customAssetsPath) {

@@ -30,6 +30,17 @@ export interface CharacterRepresentation extends Representation {
   gender: number;
 }
 
+/** `/public/giphy/visuals` from the AMII API: same shape as visuals plus a direct GIF url. */
+export interface GiphyVisualRepresentation extends Representation {
+  alt: string;
+  cat: number[];
+  lewd?: boolean;
+  url: string;
+  /** GIPHY page, for attribution. */
+  page: string;
+  source: 'giphy';
+}
+
 export type DefinitionCategory = 'visuals' | 'audible' | 'anime' | 'characters';
 export const DEFINITION_CATEGORIES: readonly DefinitionCategory[] = ['anime', 'characters', 'visuals', 'audible'];
 

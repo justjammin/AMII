@@ -5,6 +5,7 @@ import { UserEventType } from './core/types';
 
 export interface AmiiConfig {
   apiUrl: string;
+  giphyEnabled: boolean;
   assetSource: string;
   displayMode: 'beside' | 'panel';
   displayDurationMs: number;
@@ -31,6 +32,7 @@ export function readConfig(): AmiiConfig {
   const get = <T>(key: string, fallback: T): T => c.get<T>(key, fallback);
   return {
     apiUrl: get('apiUrl', 'https://amii.api.unthrottled.io/public/'),
+    giphyEnabled: get('giphy.enabled', false),
     assetSource: get('assetSource', 'https://amii.assets.unthrottled.io'),
     displayMode: get('displayMode', 'beside'),
     displayDurationMs: get('memeDisplayDurationSeconds', 40) * 1000,

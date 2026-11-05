@@ -1,8 +1,10 @@
-FROM rust:1-slim AS build
+# Builder and runtime must share a Debian release (glibc): bookworm <-> distroless debian12.
+FROM rust:1-slim-bookworm AS build
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
+COPY giphy ./giphy
 COPY src ./src
-RUN cargo build --release --locked
+RUN cargo build --release --locked --bin amii-api
 
 FROM gcr.io/distroless/cc-debian12
 COPY --from=build /src/target/release/amii-api /usr/local/bin/amii-api

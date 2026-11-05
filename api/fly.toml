@@ -1,0 +1,41 @@
+# Fly.io config for the AMII API. Rename `app` to something unique before `fly launch`.
+app = "amii-api"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  RUST_LOG = "amii_api=info,tower_http=warn"
+  # Sized for a 512 MB machine. The cache is in memory, so keep the total well under the VM size.
+  QUERY_CACHE_MB = "32"
+  MEDIA_CACHE_MB = "160"
+  GIPHY_CACHE_MB = "16"
+  GIPHY_MAX_RATING = "pg-13"
+  GIPHY_HOURLY_BUDGET = "90"
+  # Secrets (set with `fly secrets set`, never here): GIPHY_API_KEY, ADMIN_TOKEN
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # A stopped machine loses its in-memory cache, so keep one warm.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 200
+    hard_limit = 250
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    path = "/healthz"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

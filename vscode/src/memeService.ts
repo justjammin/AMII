@@ -85,8 +85,13 @@ export class MemeService implements vscode.Disposable {
 
   private async display(reaction: Reaction, visual: Visual, record = true): Promise<void> {
     const cfg = this.config();
+    const source = visual.source;
     const imageFile =
-      visual.source.kind === 'custom' ? visual.source.file : await this.store.resolveMedia('visuals', visual.source.path);
+      source.kind === 'custom'
+        ? source.file
+        : source.kind === 'giphy'
+          ? await this.store.resolveUrl(source.url)
+          : await this.store.resolveMedia('visuals', source.path);
     if (!imageFile) return;
 
     const audioPath = reaction.sound ? this.repo.audioPath(visual.audioId) : undefined;
@@ -100,7 +105,7 @@ export class MemeService implements vscode.Disposable {
     if (record) this.history = [visual, ...this.history.filter((v) => v.id !== visual.id)].slice(0, HISTORY);
 
     await this.view.show(
-      { imageFile, audioFile, alt: visual.alt, volume: cfg.volume, caption: `${reaction.event.name} · ${reaction.mood}` },
+      { imageFile, audioFile, alt: visual.alt, volume: cfg.volume, caption: `${reaction.event.name} · ${reaction.mood}${source.kind === 'giphy' ? ' · Powered by GIPHY' : ''}` },
       cfg.displayMode,
     );
 
@@ -122,6 +127,13 @@ export class MemeService implements vscode.Disposable {
   private showInfo(): void {
     const d = this.displayed;
     if (!d || !this.config().infoOnClick) return;
+    const source = d.visual.source;
+    if (source.kind === 'giphy') {
+      void vscode.window.showInformationMessage(`${d.visual.alt} — Powered by GIPHY`, 'Open on GIPHY').then((choice) => {
+        if (choice) void vscode.env.openExternal(vscode.Uri.parse(source.page));
+      });
+      return;
+    }
     const who = d.visual.characters.map((c) => `${c.name} (${c.anime})`).join(', ');
     void vscode.window.showInformationMessage(who ? `${d.visual.alt} — ${who}` : d.visual.alt);
   }

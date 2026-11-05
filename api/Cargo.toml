@@ -3,7 +3,11 @@ name = "amii-api"
 version = "0.1.0"
 edition = "2024"
 
+[workspace]
+members = ["giphy"]
+
 [dependencies]
+giphy = { path = "giphy" }
 axum = "0.8"
 bytes = "1.12.1"
 moka = { version = "0.12.16", features = ["future", "sync"] }

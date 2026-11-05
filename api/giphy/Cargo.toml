@@ -1,0 +1,13 @@
+[package]
+name = "giphy"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "http2", "system-proxy", "json", "query"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+
+[dev-dependencies]
+axum = "0.8"
+tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread"] }

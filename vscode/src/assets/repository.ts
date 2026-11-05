@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import { categoryFromName, MemeCategory, Rng } from '../core/types';
-import { CharacterRepresentation, Definitions, VisualRepresentation } from './models';
+import { CharacterRepresentation, Definitions, GiphyVisualRepresentation, VisualRepresentation } from './models';
 
 export type Gender = 'female' | 'male' | 'other';
 const GENDERS: readonly Gender[] = ['female', 'male', 'other'];
@@ -30,7 +30,10 @@ export interface Visual {
   lewd: boolean;
   audioId?: string;
   /** Remote assets have a path relative to the asset source; custom ones are absolute files. */
-  source: { kind: 'remote'; path: string } | { kind: 'custom'; file: string };
+  source:
+    | { kind: 'remote'; path: string }
+    | { kind: 'custom'; file: string }
+    | { kind: 'giphy'; url: string; page: string };
 }
 
 const IMAGE_EXT = new Set(['.gif', '.png', '.jpg', '.jpeg', '.webp', '.apng']);
@@ -40,6 +43,7 @@ const RECENT_MEMORY = 10;
 export class VisualRepository {
   private remote: Visual[] = [];
   private custom: Visual[] = [];
+  private giphy: Visual[] = [];
   private characters = new Map<string, Character>();
   private audible = new Map<string, string>();
   private recent: string[] = [];
@@ -47,7 +51,7 @@ export class VisualRepository {
   constructor(private readonly rng: Rng = Math.random) {}
 
   get size(): number {
-    return this.remote.length + this.custom.length;
+    return this.remote.length + this.custom.length + this.giphy.length;
   }
 
   get allCharacters(): Character[] {
@@ -77,6 +81,17 @@ export class VisualRepository {
       lewd: v.lewd === true,
       audioId: v.aud,
       source: { kind: 'remote', path: v.path },
+    }));
+  }
+
+  indexGiphy(items: readonly GiphyVisualRepresentation[]): void {
+    this.giphy = items.map((g) => ({
+      id: g.id,
+      alt: g.alt || 'GIPHY',
+      categories: new Set(g.cat as MemeCategory[]),
+      characters: [],
+      lewd: g.lewd === true,
+      source: { kind: 'giphy', url: g.url, page: g.page },
     }));
   }
 
@@ -129,7 +144,7 @@ export class VisualRepository {
   }
 
   private candidates(category: MemeCategory, prefs: SelectionPreferences): Visual[] {
-    const pool = prefs.onlyCustomAssets ? this.custom : [...this.remote, ...this.custom];
+    const pool = prefs.onlyCustomAssets ? this.custom : [...this.remote, ...this.giphy, ...this.custom];
     const matches = (c: Character, list: readonly string[]) =>
       list.some((p) => p === c.id || p.toLowerCase() === c.name.toLowerCase());
 

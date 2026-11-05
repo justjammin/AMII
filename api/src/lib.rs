@@ -7,8 +7,10 @@
 //! * `GET  /healthz`
 //! * `GET  /cache/stats`
 //! * `POST /cache/purge` (requires `Authorization: Bearer $ADMIN_TOKEN`)
+//! * `GET  /giphy/{search,trending,gifs/{id}}` and `/public/giphy/visuals` (see [`giphy_routes`])
 
 pub mod cache;
+pub mod giphy_routes;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -22,6 +24,7 @@ use bytes::Bytes;
 use serde::Deserialize;
 
 use cache::{CacheConfig, CacheStatus, CachedResponse, ResponseCache};
+use giphy_routes::{Giphy, GiphyConfig};
 
 pub const DEFINITION_CATEGORIES: &[&str] = &["visuals", "audible", "anime", "characters"];
 pub const MEDIA_CATEGORIES: &[&str] = &["visuals", "audible"];
@@ -37,6 +40,8 @@ pub struct Config {
     pub changed_since_bucket_secs: u64,
     pub upstream_timeout: Duration,
     pub admin_token: Option<String>,
+    pub giphy: GiphyConfig,
+    pub giphy_cache: CacheConfig,
 }
 
 impl Config {
@@ -61,6 +66,12 @@ impl Config {
             changed_since_bucket_secs: var("CHANGED_SINCE_BUCKET_SECS", 3_600u64).max(1),
             upstream_timeout: Duration::from_secs(var("UPSTREAM_TIMEOUT_SECS", 15)),
             admin_token: std::env::var("ADMIN_TOKEN").ok().filter(|t| !t.is_empty()),
+            giphy: GiphyConfig::from_env(),
+            giphy_cache: CacheConfig {
+                fresh_ttl: Duration::from_secs(var("GIPHY_TTL_SECS", 21_600)),
+                stale_ttl: Duration::from_secs(var("GIPHY_STALE_TTL_SECS", 604_800)),
+                max_bytes: var("GIPHY_CACHE_MB", 32u64) * mb,
+            },
         }
     }
 }
@@ -70,6 +81,8 @@ pub struct AppState {
     http: reqwest::Client,
     queries: ResponseCache,
     media: ResponseCache,
+    giphy: Giphy,
+    giphy_cache: ResponseCache,
 }
 
 pub fn app(config: Config) -> Router {
@@ -81,6 +94,8 @@ pub fn app(config: Config) -> Router {
     let state = Arc::new(AppState {
         queries: ResponseCache::new(config.query_cache),
         media: ResponseCache::new(config.media_cache),
+        giphy: Giphy::new(config.giphy.clone(), http.clone()),
+        giphy_cache: ResponseCache::new(config.giphy_cache),
         config,
         http,
     });
@@ -91,6 +106,7 @@ pub fn app(config: Config) -> Router {
         .route("/healthz", get(|| async { "ok" }))
         .route("/cache/stats", get(stats))
         .route("/cache/purge", post(purge))
+        .merge(giphy_routes::routes())
         .with_state(state)
 }
 
@@ -132,7 +148,7 @@ async fn fetch_upstream(http: &reqwest::Client, url: &str, default_type: &str) -
     Ok(CachedResponse::new(body, content_type))
 }
 
-fn respond(request: &HeaderMap, entry: &CachedResponse, status: CacheStatus, max_age: Duration) -> Response {
+pub(crate) fn respond(request: &HeaderMap, entry: &CachedResponse, status: CacheStatus, max_age: Duration) -> Response {
     let mut headers = HeaderMap::new();
     let set = |headers: &mut HeaderMap, name, value: &str| {
         if let Ok(v) = HeaderValue::from_str(value) {
@@ -220,6 +236,11 @@ async fn stats(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     Json(serde_json::json!({
         "queries": state.queries.stats().await,
         "media": state.media.stats().await,
+        "giphy": {
+            "configured": state.giphy.client.is_some(),
+            "budget_remaining_this_hour": state.giphy.budget.remaining().await,
+            "cache": state.giphy_cache.stats().await,
+        },
     }))
 }
 
@@ -234,6 +255,7 @@ async fn purge(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Status
     }
     state.queries.purge().await;
     state.media.purge().await;
+    state.giphy_cache.purge().await;
     StatusCode::NO_CONTENT
 }
 

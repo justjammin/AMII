@@ -1,6 +1,14 @@
 import { promises as fs } from 'fs';
+import * as crypto from 'crypto';
 import * as path from 'path';
-import { DefinitionCategory, Definitions, DEFINITION_CATEGORIES, mergeDefinitions, Representation } from './models';
+import {
+  DefinitionCategory,
+  Definitions,
+  DEFINITION_CATEGORIES,
+  GiphyVisualRepresentation,
+  mergeDefinitions,
+  Representation,
+} from './models';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -37,6 +45,17 @@ function within(base: string, ...parts: string[]): string {
  */
 export interface MediaResolver {
   resolveMedia(category: 'visuals' | 'audible', assetPath: string): Promise<string | undefined>;
+  resolveUrl(url: string): Promise<string | undefined>;
+}
+
+/** Only GIPHY's CDN may be downloaded from by absolute URL. */
+export function isAllowedMediaUrl(raw: string): boolean {
+  try {
+    const url = new URL(raw);
+    return url.protocol === 'https:' && (url.hostname === 'giphy.com' || url.hostname.endsWith('.giphy.com'));
+  } catch {
+    return false;
+  }
 }
 
 export class AssetStore implements MediaResolver {
@@ -88,6 +107,51 @@ export class AssetStore implements MediaResolver {
       this.log(`Unable to sync ${category} from ${url}: ${String(err)}`);
       return existing ?? [];
     }
+  }
+
+  /**
+   * GIPHY-sourced meme definitions served by your AMII API (`<apiUrl>/giphy/visuals`).
+   * Cached on disk like the other definitions; returns [] if the API has GIPHY disabled.
+   */
+  async loadGiphy(force = false): Promise<GiphyVisualRepresentation[]> {
+    const file = within(path.resolve(this.opts.storageDir), 'api', 'giphy', 'visuals.json');
+    const metaFile = `${file}.meta`;
+    const existing = await readJson<GiphyVisualRepresentation[]>(file);
+    const meta = await readJson<Meta>(metaFile);
+    const interval = this.opts.refreshIntervalMs ?? DAY_MS;
+    if (existing && meta && Date.now() - meta.fetchedAt <= interval && !force) return existing;
+
+    const url = new URL('giphy/visuals', withSlash(this.opts.apiUrl));
+    try {
+      const res = await this.fetchImpl(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = ((await res.json()) as GiphyVisualRepresentation[]).filter((v) => isAllowedMediaUrl(v.url));
+      await writeFileAtomic(file, JSON.stringify(body));
+      await writeFileAtomic(metaFile, JSON.stringify({ fetchedAt: Date.now() } satisfies Meta));
+      this.log(`Synced GIPHY: ${body.length} memes`);
+      return body;
+    } catch (err) {
+      this.log(`Unable to sync GIPHY memes from ${url}: ${String(err)}`);
+      return existing ?? [];
+    }
+  }
+
+  /** Downloads a GIF by absolute URL (GIPHY CDN only) into `giphy/<hash>`. */
+  async resolveUrl(url: string): Promise<string | undefined> {
+    if (!isAllowedMediaUrl(url)) {
+      this.log(`Refusing to download from ${url}`);
+      return undefined;
+    }
+    const hash = crypto.createHash('sha256').update(url).digest('hex').slice(0, 32);
+    const ext = path.extname(new URL(url).pathname) || '.gif';
+    const local = within(path.resolve(this.opts.storageDir), 'giphy', `${hash}${ext}`);
+    if (await exists(local)) return local;
+    let pending = this.inflight.get(local);
+    if (!pending) {
+      pending = this.download(url, local).finally(() => this.inflight.delete(local));
+      this.inflight.set(local, pending);
+    }
+    return pending;
   }
 
   /**

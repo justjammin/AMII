@@ -13,7 +13,8 @@ This repository is a **fork** of **[AMII](https://github.com/ani-memes/AMII)** (
 This fork also contains:
 
 - **[`vscode/`](vscode/)**: a TypeScript port of AMII for VS Code (same emotion engine; reacts to tasks, tests, terminal commands and idling). See [vscode/README.md](vscode/README.md).
-- **[`api/`](api/)**: a Rust (axum + moka) API that caches asset queries and media in front of the upstream AMII API. Point either plugin at it. See [api/README.md](api/README.md).
+- **[`api/`](api/)**: a Rust (axum + moka) API that caches asset queries and media in front of the upstream AMII API, and serves GIPHY anime GIFs as extra memes. Point either plugin at it. See [api/README.md](api/README.md), and [api/DEPLOY.md](api/DEPLOY.md) for hosting on Fly.io or any Docker host.
+- **[`api/giphy/`](api/giphy/)**: a standalone, typed async Rust client for the GIPHY API.
 
 ### Install this fork from source (JetBrains IDEs)
 

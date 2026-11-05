@@ -48,7 +48,7 @@ async fn start_upstream() -> (String, Arc<Upstream>) {
     (format!("http://{addr}"), upstream)
 }
 
-fn config(base: &str, fresh: Duration) -> Config {
+pub fn config(base: &str, fresh: Duration) -> Config {
     let cache = CacheConfig { fresh_ttl: fresh, stale_ttl: Duration::from_secs(3600), max_bytes: 1 << 20 };
     Config {
         upstream_api_url: format!("{base}/public/"),
@@ -58,6 +58,16 @@ fn config(base: &str, fresh: Duration) -> Config {
         changed_since_bucket_secs: 3600,
         upstream_timeout: Duration::from_secs(5),
         admin_token: Some("s3cret".into()),
+        giphy: amii_api::giphy_routes::GiphyConfig {
+            api_key: None,
+            base_url: giphy::DEFAULT_BASE_URL.into(),
+            max_rating: giphy::Rating::Pg13,
+            query_prefix: "anime".into(),
+            hourly_budget: 90,
+            per_category: 25,
+            max_gif_bytes: 4 << 20,
+        },
+        giphy_cache: cache,
     }
 }
 

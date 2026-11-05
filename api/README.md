@@ -19,6 +19,10 @@ editor ──► amii-api ──► amii.api.unthrottled.io/public/   (definitio
 | `GET /healthz` | Liveness |
 | `GET /cache/stats` | Entries, bytes, hits, misses, stale serves, upstream errors |
 | `POST /cache/purge` | Drop everything. Needs `Authorization: Bearer $ADMIN_TOKEN`; 404 when no token is set |
+| `GET /public/giphy/visuals[?categories=smug,celebration]` | GIPHY anime GIFs as AMII meme definitions: one search per meme category, merged and tagged with `cat` |
+| `GET /giphy/search?q=&limit=&offset=&rating=` | GIPHY search; rating is capped at `GIPHY_MAX_RATING` |
+| `GET /giphy/trending?limit=&offset=` | GIPHY trending |
+| `GET /giphy/gifs/{id}` | A single GIF |
 
 Every cached response carries `X-Cache: HIT|MISS|STALE`, an `ETag` and `Cache-Control`;
 `If-None-Match` gets a `304`.
@@ -34,7 +38,21 @@ Every cached response carries `X-Cache: HIT|MISS|STALE`, an `ETag` and `Cache-Co
 - **Bounded by bytes**: `QUERY_CACHE_MB` / `MEDIA_CACHE_MB` cap the total body size (LRU-ish eviction via moka's TinyLFU).
 - Only known categories and `visuals/` / `audible/` media paths are proxied. It is not an open proxy.
 
-## Run
+## GIPHY
+
+The GIPHY routes use the [`giphy`](giphy/) crate in this workspace. They return 503 until
+`GIPHY_API_KEY` is set. The key only lives on the server; clients never see it.
+
+- **Same cache as everything else:** single-flight, stale-while-error, ETags. Search keys are normalized (case, whitespace, clamped limit and rating), so equivalent queries share an entry.
+- **Hourly budget:** `GIPHY_HOURLY_BUDGET` (default 90) caps upstream calls, because beta keys allow about 100 an hour. Once it's spent, cached copies are served `STALE`, and uncached queries get `429` with `Retry-After`. `/cache/stats` shows the remaining budget.
+- **Ratings:** whatever a client asks for, GIPHY is never asked above `GIPHY_MAX_RATING` (`pg-13` by default). `r` results are flagged `lewd` so the extension's filter applies.
+- **Cost:** a cold `/public/giphy/visuals` makes 19 GIPHY calls, one per category. After that it's served from cache for `GIPHY_TTL_SECS` (6 hours).
+
+## Deploy
+
+See [DEPLOY.md](DEPLOY.md). It covers Fly.io (configured in `fly.toml` and deployed by CI) and any other Docker host via the GHCR image.
+
+## Run locally
 
 ```bash
 cargo run --release                       # http://localhost:8080
@@ -65,12 +83,21 @@ Then in VS Code settings:
 | `CHANGED_SINCE_BUCKET_SECS` | `3600` |
 | `UPSTREAM_TIMEOUT_SECS` | `15` |
 | `ADMIN_TOKEN` | unset (purge disabled) |
+| `GIPHY_API_KEY` | unset (GIPHY routes return 503) |
+| `GIPHY_MAX_RATING` | `pg-13` |
+| `GIPHY_QUERY_PREFIX` | `anime` |
+| `GIPHY_PER_CATEGORY` | `25` (max 50) |
+| `GIPHY_HOURLY_BUDGET` | `90` |
+| `GIPHY_TTL_SECS` / `GIPHY_STALE_TTL_SECS` | `21600` / `604800` |
+| `GIPHY_CACHE_MB` | `32` |
+| `GIPHY_MAX_GIF_MB` | `4` (largest rendition handed to editors) |
 | `RUST_LOG` | `amii_api=info,tower_http=info` |
 
 ## Test
 
 ```bash
-cargo test    # spins up a mock upstream; covers HIT/MISS, coalescing, bucketing, STALE, ETag/304, path confinement, purge auth
+cargo test --workspace   # mock upstream + mock GIPHY: HIT/MISS, coalescing, bucketing, STALE, ETag/304,
+                         # path confinement, purge auth, GIPHY fan-out/merge, rating cap, budget, key never leaked
 ```
 
 The cache is in-memory, so it is per instance and empties on restart. If you run more than one

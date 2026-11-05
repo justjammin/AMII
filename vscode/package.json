@@ -40,6 +40,11 @@
           "default": "https://amii.api.unthrottled.io/public/",
           "markdownDescription": "Where asset definitions are queried. Point this at your own caching AMII API (see `api/` in the repo), e.g. `http://localhost:8080/public/`."
         },
+        "amii.giphy.enabled": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Mix in GIPHY anime reaction GIFs. Requires `amii.apiUrl` to point at your own AMII API with `GIPHY_API_KEY` set (the key never leaves the server)."
+        },
         "amii.assetSource": {
           "type": "string",
           "default": "https://amii.assets.unthrottled.io",

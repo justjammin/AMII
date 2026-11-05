@@ -1,0 +1,107 @@
+# CI/CD for the AMII API (api/), the giphy crate (api/giphy/) and the VS Code extension (vscode/).
+#
+# - Every push / PR touching them: tests.
+# - Push to main: build the container, push it to GHCR (ghcr.io/<owner>/amii-api), and deploy
+#   to Fly.io when the FLY_API_TOKEN repository secret is set.
+name: API & VS Code
+
+on:
+  push:
+    branches: [main]
+    paths: ["api/**", "vscode/**", ".github/workflows/api.yml"]
+  pull_request:
+    paths: ["api/**", "vscode/**", ".github/workflows/api.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: api-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: api
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace --locked
+
+  vscode-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vscode
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: vscode/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npx vsce package --out amii-vscode.vsix
+      - uses: actions/upload-artifact@v4
+        with:
+          name: amii-vscode-vsix
+          path: vscode/amii-vscode.vsix
+
+  image:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [api-test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/amii-api" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: api
+          push: true
+          tags: |
+            ${{ steps.name.outputs.image }}:latest
+            ${{ steps.name.outputs.image }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-fly:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [api-test]
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Skip when Fly isn't configured
+        if: env.FLY_API_TOKEN == ''
+        run: echo "::notice::FLY_API_TOKEN not set; skipping Fly.io deploy (image is still published to GHCR)."
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+        if: env.FLY_API_TOKEN != ''
+      - name: Deploy
+        if: env.FLY_API_TOKEN != ''
+        working-directory: api
+        run: flyctl deploy --remote-only
+      - name: Smoke test
+        if: env.FLY_API_TOKEN != ''
+        working-directory: api
+        run: |
+          app=$(grep -m1 '^app' fly.toml | cut -d'"' -f2)
+          curl -fsS --retry 5 --retry-delay 5 "https://${app}.fly.dev/healthz"
