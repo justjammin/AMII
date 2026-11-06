@@ -1,4 +1,4 @@
-// Thin client for the AMII API's GIPHY routes (the GIPHY key stays on the server).
+// Minimal GIPHY search client used by the curator (runs in CI with the GIPHY_API_KEY secret).
 
 export interface GiphyCandidate {
   id: string;
@@ -28,7 +28,7 @@ interface RawGif {
 
 export class RateLimitedError extends Error {
   constructor(readonly retryAfterSeconds: number) {
-    super(`AMII API GIPHY budget exhausted; retry after ${retryAfterSeconds}s`);
+    super(`GIPHY rate limit hit; retry after ${retryAfterSeconds}s`);
   }
 }
 
@@ -54,21 +54,29 @@ export function toCandidate(g: RawGif): GiphyCandidate | undefined {
   };
 }
 
-export async function searchGiphy(
-  apiUrl: string,
-  query: string,
-  offset: number,
-  limit: number,
-  fetchImpl: typeof fetch = fetch,
-): Promise<GiphyCandidate[]> {
-  const base = apiUrl.replace(/\/public\/?$/, '').replace(/\/+$/, '');
-  const url = new URL(`${base}/giphy/search`);
+export interface GiphyConfig {
+  apiKey: string;
+  /** Highest rating to request (GIPHY's `rating` param). */
+  rating: 'g' | 'pg' | 'pg-13';
+  baseUrl?: string;
+  fetchImpl?: typeof fetch;
+}
+
+export const DEFAULT_GIPHY_BASE = 'https://api.giphy.com/v1/';
+
+/** GIPHY search, straight to api.giphy.com. Errors never include the URL, which carries the key. */
+export async function searchGiphy(cfg: GiphyConfig, query: string, offset: number, limit: number): Promise<GiphyCandidate[]> {
+  const url = new URL('gifs/search', cfg.baseUrl ?? DEFAULT_GIPHY_BASE);
+  url.searchParams.set('api_key', cfg.apiKey);
   url.searchParams.set('q', query);
-  url.searchParams.set('offset', String(offset));
-  url.searchParams.set('limit', String(limit));
-  const res = await fetchImpl(url);
-  if (res.status === 429) throw new RateLimitedError(Number(res.headers.get('retry-after') ?? 600));
-  if (!res.ok) throw new Error(`GIPHY search failed: HTTP ${res.status} ${await res.text()}`);
+  url.searchParams.set('limit', String(Math.min(50, Math.max(1, limit))));
+  url.searchParams.set('offset', String(Math.min(4999, Math.max(0, offset))));
+  url.searchParams.set('rating', cfg.rating);
+  url.searchParams.set('lang', 'en');
+  const res = await (cfg.fetchImpl ?? fetch)(url);
+  if (res.status === 429) throw new RateLimitedError(Number(res.headers.get('retry-after') ?? 60));
+  if (res.status === 401 || res.status === 403) throw new Error('GIPHY rejected the API key (check the GIPHY_API_KEY secret)');
+  if (!res.ok) throw new Error(`GIPHY search failed: HTTP ${res.status}`);
   const body = (await res.json()) as { data: RawGif[] };
   return body.data.map(toCandidate).filter((c): c is GiphyCandidate => !!c);
 }

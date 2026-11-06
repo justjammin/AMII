@@ -40,8 +40,14 @@ Every cached response carries `X-Cache: HIT|MISS|STALE`, an `ETag` and `Cache-Co
 
 ## GIPHY
 
-The GIPHY routes use the [`giphy`](giphy/) crate in this workspace. They return 503 until
-`GIPHY_API_KEY` is set. The key only lives on the server; clients never see it.
+**Normal setup: no GIPHY key on the server.** GIPHY GIFs come from the curated manifest
+(`manifests/giphy-characters.json`, built by the [curator agent](../agent/README.md) in CI with its own
+GIPHY key and reviewed in PRs). `/public/giphy/visuals` serves it with character ids; the GIFs
+themselves load from GIPHY's CDN.
+
+**Optional live mode:** setting `GIPHY_API_KEY` here also enables `/giphy/search`, `/giphy/trending`
+and `/giphy/gifs/{id}`, and mixes one live search per category into `/public/giphy/visuals`. These
+use the [`giphy`](giphy/) crate and return 503 without a key. The key stays on the server.
 
 - **Same cache as everything else:** single-flight, stale-while-error, ETags. Search keys are normalized (case, whitespace, clamped limit and rating), so equivalent queries share an entry.
 - **Hourly budget:** `GIPHY_HOURLY_BUDGET` (default 90) caps upstream calls, because beta keys allow about 100 an hour. Once it's spent, cached copies are served `STALE`, and uncached queries get `429` with `Retry-After`. `/cache/stats` shows the remaining budget.

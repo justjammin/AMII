@@ -6,11 +6,12 @@ dollars a month, gets HTTPS on `<app>.fly.dev`, and is deployed by CI from `main
 
 Any other Docker host works too. CI also publishes `ghcr.io/<owner>/amii-api:latest` (see [Other hosts](#other-hosts)).
 
-## 1. Get a GIPHY key
+## 1. GIPHY key: not needed here
 
-1. Go to <https://developers.giphy.com/dashboard/> and **Create an App**, then choose **API**.
-2. Copy the API key. Beta keys allow about 100 calls an hour, and the API's `GIPHY_HOURLY_BUDGET=90` stays under that.
-   Request a production key from the same dashboard when you need more.
+The API serves GIPHY GIFs from the curated manifest baked into its image, so the server needs no
+GIPHY key. The key belongs to the curator workflow as the GitHub secret `GIPHY_API_KEY`; see
+[`../agent/README.md`](../agent/README.md). Get one at <https://developers.giphy.com/dashboard/>
+(**Create an App**, then choose **API**).
 
 ## 2. Create the Fly app (once)
 
@@ -22,7 +23,7 @@ cd api
 # Pick a unique name and put it in fly.toml's `app = "..."`, then:
 fly launch --no-deploy --copy-config --name <your-app-name>
 
-fly secrets set GIPHY_API_KEY=<key-from-step-1> ADMIN_TOKEN=$(openssl rand -hex 24)
+fly secrets set ADMIN_TOKEN=$(openssl rand -hex 24)
 fly deploy
 curl https://<your-app-name>.fly.dev/healthz        # -> ok
 curl https://<your-app-name>.fly.dev/cache/stats
@@ -81,7 +82,6 @@ fly logs                                   # request logs (RUST_LOG in fly.toml)
 curl https://<app>.fly.dev/cache/stats     # hit/miss/stale counts, GIPHY budget left this hour
 curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" https://<app>.fly.dev/cache/purge
 fly scale memory 1024                      # then raise MEDIA_CACHE_MB in fly.toml
-fly secrets set GIPHY_API_KEY=<new>        # rotate; triggers a restart
 ```
 
 **Scaling out:** each machine has its own cache. Two machines in different regions work fine,

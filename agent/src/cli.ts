@@ -1,16 +1,17 @@
 /**
  * Builds/extends a manifest of GIPHY GIFs per AMII character, using Claude as the curator.
  *
- *   node out/src/cli.js --api https://<your-api>/public/ [--characters "Aqua,Megumin"] [--limit 10]
+ *   GIPHY_API_KEY=... ANTHROPIC_API_KEY=... node out/src/cli.js [--characters "Aqua,Megumin"] [--limit 10]
  *        [--target 12] [--max-searches 6] [--concurrency 2] [--min-confidence 0.7]
  *        [--manifest ../api/manifests/giphy-characters.json] [--dry-run]
  *
- * Needs ANTHROPIC_API_KEY (or an `ant auth login` profile) and an AMII API with GIPHY_API_KEY set.
+ * Needs ANTHROPIC_API_KEY (or an `ant auth login` profile) and GIPHY_API_KEY. Characters come from the
+ * public AMII API (--api, default the upstream one); no deployed server is involved.
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { AgentOptions, runCharacter } from './agent';
 import { knownIdsFor, loadManifest, mergeManifest, saveManifest } from './manifest';
-import { Character } from './tools';
+import { Character, SearchBudget } from './tools';
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -44,11 +45,14 @@ export function chooseCharacters(all: Character[], countFor: (id: string) => num
 }
 
 async function main() {
-  const apiUrl = arg('api') ?? process.env.AMII_API_URL;
-  if (!apiUrl) throw new Error('Pass --api https://<your-amii-api>/public/ (or set AMII_API_URL)');
+  const apiUrl = arg('api') ?? process.env.AMII_API_URL ?? 'https://amii.api.unthrottled.io/public/';
+  const giphyKey = process.env.GIPHY_API_KEY;
+  const dryRun = process.argv.includes('--dry-run');
+  if (!giphyKey && !dryRun) throw new Error('Set GIPHY_API_KEY (get one at developers.giphy.com)');
   const manifestPath = arg('manifest') ?? '../api/manifests/giphy-characters.json';
   const opts: AgentOptions = {
-    apiUrl,
+    giphy: { apiKey: giphyKey ?? '', rating: (arg('rating') as 'g' | 'pg' | 'pg-13') ?? 'pg-13' },
+    budget: new SearchBudget(num('max-total-searches', 90)),
     model: arg('model') ?? 'claude-opus-5-5',
     effort: (arg('effort') as AgentOptions['effort']) ?? 'medium',
     target: num('target', 12),
@@ -66,7 +70,7 @@ async function main() {
     num('limit', 10),
   );
   console.log(`Curating ${characters.length} characters: ${characters.map((c) => `${c.name} (${c.anime})`).join(', ')}`);
-  if (process.argv.includes('--dry-run')) return;
+  if (dryRun) return;
 
   const client = new Anthropic();
   const totals = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, added: 0 };
@@ -97,6 +101,7 @@ async function main() {
 
   console.log(
     `\nAdded ${totals.added} GIFs → ${manifestPath} (${manifest.entries.length} total). ` +
+      `GIPHY searches used: ${num('max-total-searches', 90) - opts.budget.remaining}. ` +
       `Tokens: ${totals.input} in, ${totals.output} out, ${totals.cacheRead} cache-read, ${totals.cacheWrite} cache-write.`,
   );
   if (failures === characters.length && characters.length > 0) process.exit(1);

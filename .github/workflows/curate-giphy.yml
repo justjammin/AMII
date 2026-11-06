@@ -1,8 +1,9 @@
 # Runs the Claude curator agent (agent/) to find new GIPHY GIFs per AMII character, then opens a
 # pull request with the manifest changes so a human reviews every addition before it ships.
 #
-# Needs: secret ANTHROPIC_API_KEY, and repository variable AMII_API_URL pointing at your deployed
-# AMII API (with GIPHY_API_KEY set on it), e.g. https://<app>.fly.dev/public/
+# Needs: secrets ANTHROPIC_API_KEY and GIPHY_API_KEY. This is the only place the GIPHY key is used;
+# the deployed API just serves the reviewed manifest. Optional variable AMII_API_URL picks where the
+# character list comes from (default: the upstream AMII API).
 name: Curate GIPHY character manifest
 
 on:
@@ -30,21 +31,22 @@ jobs:
     timeout-minutes: 90
     env:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      AMII_API_URL: ${{ vars.AMII_API_URL }}
+      GIPHY_API_KEY: ${{ secrets.GIPHY_API_KEY }}
+      AMII_API_URL: ${{ vars.AMII_API_URL || 'https://amii.api.unthrottled.io/public/' }}
     steps:
       - name: Skip when not configured
-        if: env.ANTHROPIC_API_KEY == '' || env.AMII_API_URL == ''
-        run: echo "::notice::Set secret ANTHROPIC_API_KEY and variable AMII_API_URL to run the curator."
+        if: env.ANTHROPIC_API_KEY == '' || env.GIPHY_API_KEY == ''
+        run: echo "::notice::Set secrets ANTHROPIC_API_KEY and GIPHY_API_KEY to run the curator."
       - uses: actions/checkout@v4
-        if: env.ANTHROPIC_API_KEY != '' && env.AMII_API_URL != ''
+        if: env.ANTHROPIC_API_KEY != '' && env.GIPHY_API_KEY != ''
       - uses: actions/setup-node@v4
-        if: env.ANTHROPIC_API_KEY != '' && env.AMII_API_URL != ''
+        if: env.ANTHROPIC_API_KEY != '' && env.GIPHY_API_KEY != ''
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: agent/package-lock.json
       - name: Curate
-        if: env.ANTHROPIC_API_KEY != '' && env.AMII_API_URL != ''
+        if: env.ANTHROPIC_API_KEY != '' && env.GIPHY_API_KEY != ''
         working-directory: agent
         env:
           CHARACTERS: ${{ inputs.characters }}
@@ -56,7 +58,7 @@ jobs:
           node out/src/cli.js "${args[@]}" | tee curate.log
           { echo '```'; tail -n 40 curate.log; echo '```'; } > pr-body.md
       - name: Open pull request for review
-        if: env.ANTHROPIC_API_KEY != '' && env.AMII_API_URL != ''
+        if: env.ANTHROPIC_API_KEY != '' && env.GIPHY_API_KEY != ''
         uses: peter-evans/create-pull-request@v7
         with:
           branch: giphy-manifest/update

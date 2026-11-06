@@ -63,8 +63,9 @@ instead:
 
 ### GIPHY memes
 
-With your API deployed and `GIPHY_API_KEY` set on it, turn on `"amii.giphy.enabled": true`.
-GIPHY anime GIFs then join the pool for every category, captioned "Powered by GIPHY". Click one
+With your API deployed, turn on `"amii.giphy.enabled": true`. The curated per-character GIPHY GIFs
+from the API's manifest then join the pool, captioned "Powered by GIPHY", and count toward your
+preferred characters. Click one
 to open it on GIPHY. GIFs are only downloaded from `https://*.giphy.com`.
 
 Definitions are also cached on disk under the extension's global storage and refreshed with

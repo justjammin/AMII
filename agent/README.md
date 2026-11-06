@@ -8,8 +8,8 @@ setting work for GIPHY GIFs too.
 
 ```
 for each character (fewest GIFs first):
-  Claude ──search_giphy("Aqua KonoSuba smug")──► AMII API /giphy/search ──► GIPHY   (key stays server-side,
-     ▲                                                                                cached, hourly budget)
+  Claude ──search_giphy("Aqua KonoSuba smug")──► api.giphy.com   (GIPHY_API_KEY from a CI secret,
+     ▲                                                             run-wide search budget, rating ≤ pg-13)
      └── label + first-frame still for each candidate (vision)
   Claude ──record_gifs([{giphy_id, categories, confidence, reason}])
           rejects ids it wasn't shown · drops confidence < 0.7 · never re-shows known ids
@@ -32,14 +32,17 @@ are re-read from cache on each loop iteration. The run log prints token totals.
 
 ## Run it
 
-You need an AMII API deployed with `GIPHY_API_KEY` (see `../api/DEPLOY.md`) and an Anthropic API key.
+You need a GIPHY API key and an Anthropic API key. **This is the only place the GIPHY key is
+used**: the deployed API just serves the reviewed manifest. The character list comes from the public
+AMII API (`--api`, default the upstream one), so no server of yours has to be running.
 
 ```bash
 cd agent && npm install
 export ANTHROPIC_API_KEY=...            # or `ant auth login`
-npm run curate -- --api https://<app>.fly.dev/public/ --dry-run      # which characters it would do
-npm run curate -- --api https://<app>.fly.dev/public/ --characters "Aqua,Megumin" --target 10
-npm run curate -- --api https://<app>.fly.dev/public/ --limit 20     # 20 characters with the fewest GIFs
+export GIPHY_API_KEY=...
+npm run curate -- --dry-run                                  # which characters it would do
+npm run curate -- --characters "Aqua,Megumin" --target 10
+npm run curate -- --limit 20                                 # 20 characters with the fewest GIFs
 git diff ../api/manifests/giphy-characters.json                      # review, then commit
 ```
 
@@ -52,20 +55,23 @@ git diff ../api/manifests/giphy-characters.json                      # review, t
 | `--per-search` | `10` | New candidates shown per search (each is one small image) |
 | `--min-confidence` | `0.7` | Lower picks are dropped |
 | `--concurrency` | `2` | Characters in parallel |
+| `--max-total-searches` | `90` | GIPHY searches for the whole run, shared by all characters |
+| `--rating` | `pg-13` | Highest GIPHY rating requested |
+| `--api` | upstream AMII API | Where the character list comes from |
 | `--model` / `--effort` | `claude-opus-5-5` / `medium` | |
 
-**GIPHY budget:** each character uses up to `--max-searches` GIPHY calls through the API, which
-allows `GIPHY_HOURLY_BUDGET` (90) an hour on a beta key. Ten characters at six searches is about 60. A
-short 429 is waited out; a long one tells Claude to finish with what it has. For big runs, get a
-production GIPHY key and raise the budget.
+**GIPHY budget:** beta keys allow about 100 calls an hour. Each run is capped at
+`--max-total-searches` (90), shared across characters, and each character at `--max-searches` (6).
+Ten characters at six searches is about 60. When the budget runs out, Claude is told to finish with what it
+has. A short 429 is waited out. For big runs, get a production key and raise the cap.
 
 ## Automate it
 
 `.github/workflows/curate-giphy.yml` runs monthly, or on demand with character names, and opens a
 PR titled "Curated GIPHY GIFs for AMII characters" with the run log. Set:
 
-- secret `ANTHROPIC_API_KEY`
-- variable `AMII_API_URL`, e.g. `https://<app>.fly.dev/public/`
+- secrets `ANTHROPIC_API_KEY` and `GIPHY_API_KEY`
+- optional variable `AMII_API_URL` for the character list (default: the upstream AMII API)
 
 Merging the PR rebuilds and redeploys the API with the new manifest.
 

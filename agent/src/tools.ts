@@ -2,7 +2,7 @@ import type { BetaToolResultContentBlockParam } from '@anthropic-ai/sdk/resource
 import { betaZodTool } from '@anthropic-ai/sdk/helpers/beta/zod';
 import * as z from 'zod/v4';
 import { CATEGORY_NAMES, categoryId } from './categories';
-import { GiphyCandidate, RateLimitedError, searchGiphy } from './giphy';
+import { GiphyCandidate, GiphyConfig, RateLimitedError, searchGiphy } from './giphy';
 
 export interface Character {
   id: string;
@@ -10,15 +10,25 @@ export interface Character {
   anime: string;
 }
 
+/** Searches left for the whole run, shared by every character (GIPHY beta keys allow ~100/hour). */
+export class SearchBudget {
+  constructor(public remaining: number) {}
+  take(): boolean {
+    if (this.remaining <= 0) return false;
+    this.remaining--;
+    return true;
+  }
+}
+
 export interface SessionOptions {
-  apiUrl: string;
+  giphy: GiphyConfig;
+  budget: SearchBudget;
   /** GIPHY ids already in the manifest for this character: never shown again. */
   knownIds: ReadonlySet<string>;
   maxSearches: number;
   perSearch: number;
-  /** Longest we'll wait out a 429 from the AMII API before telling the model to wrap up. */
+  /** Longest we'll wait out a GIPHY 429 before telling the model to wrap up. */
   maxRateLimitWaitSeconds?: number;
-  fetchImpl?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
 }
 
@@ -44,12 +54,15 @@ export class CharacterSession {
     if (this.searches >= this.opts.maxSearches) {
       throw new Error(`Search limit reached (${this.opts.maxSearches}). Record your picks with record_gifs and finish.`);
     }
+    if (!this.opts.budget.take()) {
+      throw new Error('The GIPHY search budget for this run is used up. Record your picks with record_gifs and finish.');
+    }
     this.searches++;
     const sleep = this.opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
     let results: GiphyCandidate[] | undefined;
     for (let attempt = 0; results === undefined; attempt++) {
       try {
-        results = await searchGiphy(this.opts.apiUrl, query, offset, 25, this.opts.fetchImpl);
+        results = await searchGiphy(this.opts.giphy, query, offset, 25);
       } catch (err) {
         const wait = err instanceof RateLimitedError ? err.retryAfterSeconds : -1;
         if (wait < 0 || wait > (this.opts.maxRateLimitWaitSeconds ?? 120) || attempt >= 2) throw err;

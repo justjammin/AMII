@@ -5,9 +5,9 @@ import { AddressInfo } from 'node:net';
 import { describe, it } from 'node:test';
 import { runCharacter, SYSTEM_PROMPT } from '../src/agent';
 import { chooseCharacters } from '../src/cli';
-import { toCandidate } from '../src/giphy';
+import { GiphyConfig, searchGiphy, toCandidate } from '../src/giphy';
 import { emptyManifest, mergeManifest, ManifestEntry } from '../src/manifest';
-import { CharacterSession } from '../src/tools';
+import { CharacterSession, SearchBudget } from '../src/tools';
 
 const aqua = { id: 'c1', name: 'Aqua', anime: 'KonoSuba' };
 
@@ -29,12 +29,14 @@ function fakeApi(pages: Record<string, unknown[]>, calls: string[] = []) {
   return (async (input: string | URL) => {
     const url = new URL(String(input));
     calls.push(url.pathname + url.search);
-    if (url.pathname === '/giphy/search') {
+    if (url.pathname === '/v1/gifs/search') {
       return Response.json({ data: pages[url.searchParams.get('q')!] ?? [] });
     }
     return new Response('nope', { status: 404 });
   }) as typeof fetch;
 }
+
+const giphyCfg = (fetchImpl: typeof fetch): GiphyConfig => ({ apiKey: 'sekret', rating: 'pg-13', baseUrl: 'https://giphy.test/v1/', fetchImpl });
 
 describe('toCandidate', () => {
   it('needs a still and an animation, and cleans the title', () => {
@@ -49,17 +51,17 @@ describe('CharacterSession', () => {
   it('shows only unseen, non-R candidates as label + image pairs, within the search budget', async () => {
     const calls: string[] = [];
     const s = new CharacterSession(aqua, {
-      apiUrl: 'https://api.test/public/',
+      giphy: giphyCfg(fakeApi({ 'aqua konosuba': [gif('known'), gif('a1'), gif('lewd', 'r'), gif('a2'), gif('a3')] }, calls)),
+      budget: new SearchBudget(10),
       knownIds: new Set(['known']),
       maxSearches: 2,
       perSearch: 2,
-      fetchImpl: fakeApi({ 'aqua konosuba': [gif('known'), gif('a1'), gif('lewd', 'r'), gif('a2'), gif('a3')] }, calls),
     });
     const blocks = await s.search('aqua konosuba', 0);
     assert.ok(Array.isArray(blocks));
     assert.equal(blocks.filter((b) => b.type === 'image').length, 2);
     assert.deepEqual([...s.shown.keys()], ['a1', 'a2']);
-    assert.equal(calls[0], '/giphy/search?q=aqua+konosuba&offset=0&limit=25', 'API base derived from /public/');
+    assert.equal(calls[0], '/v1/gifs/search?api_key=sekret&q=aqua+konosuba&limit=25&offset=0&rating=pg-13&lang=en');
 
     const again = await s.search('aqua konosuba', 0);
     assert.equal(typeof again === 'string' ? 'text' : 'blocks', 'blocks', 'a3 is still unseen');
@@ -67,7 +69,7 @@ describe('CharacterSession', () => {
   });
 
   it('records only ids it showed, maps category names to ids, clamps confidence', async () => {
-    const s = new CharacterSession(aqua, { apiUrl: 'https://api.test/', knownIds: new Set(), maxSearches: 3, perSearch: 5, fetchImpl: fakeApi({ q: [gif('a1')] }) });
+    const s = new CharacterSession(aqua, { giphy: giphyCfg(fakeApi({ q: [gif('a1')] })), budget: new SearchBudget(10), knownIds: new Set(), maxSearches: 3, perSearch: 5 });
     await s.search('q', 0);
     assert.throws(
       () => s.record([
@@ -82,14 +84,32 @@ describe('CharacterSession', () => {
     assert.equal(s.accepted.size, 1);
   });
 
-  it('waits out a short 429 from the AMII API, then retries', async () => {
+  it('waits out a short 429 from GIPHY, then retries', async () => {
     let n = 0;
     const waits: number[] = [];
     const fetchImpl = (async () =>
       n++ === 0 ? new Response('', { status: 429, headers: { 'retry-after': '30' } }) : Response.json({ data: [gif('a1')] })) as unknown as typeof fetch;
-    const s = new CharacterSession(aqua, { apiUrl: 'https://api.test/', knownIds: new Set(), maxSearches: 1, perSearch: 5, fetchImpl, sleep: async (ms) => void waits.push(ms) });
+    const s = new CharacterSession(aqua, { giphy: giphyCfg(fetchImpl), budget: new SearchBudget(10), knownIds: new Set(), maxSearches: 1, perSearch: 5, sleep: async (ms) => void waits.push(ms) });
     await s.search('q', 0);
     assert.deepEqual(waits, [30_000]);
+  });
+});
+
+describe('GIPHY access', () => {
+  it('never puts the key in error messages', async () => {
+    const fail = (status: number) => (async () => new Response('x', { status })) as unknown as typeof fetch;
+    for (const status of [401, 500]) {
+      await assert.rejects(searchGiphy(giphyCfg(fail(status)), 'q', 0, 10), (err: Error) => !err.message.includes('sekret'));
+    }
+  });
+
+  it('shares one search budget across every character in the run', async () => {
+    const budget = new SearchBudget(2);
+    const make = (c: typeof aqua) =>
+      new CharacterSession(c, { giphy: giphyCfg(fakeApi({ q: [gif('a1')] })), budget, knownIds: new Set(), maxSearches: 5, perSearch: 5 });
+    await make(aqua).search('q', 0);
+    await make({ ...aqua, id: 'c2' }).search('q', 0);
+    await assert.rejects(make({ ...aqua, id: 'c3' }).search('q', 0), /budget for this run is used up/);
   });
 });
 
@@ -150,8 +170,8 @@ describe('runCharacter (real SDK tool runner against a fake Messages API)', () =
 
     try {
       const result = await runCharacter(client, aqua, new Set(), {
-        apiUrl: 'https://api.test/public/',
-        fetchImpl: fakeApi({ 'Aqua KonoSuba': [gif('a1'), gif('a2')] }),
+        giphy: giphyCfg(fakeApi({ 'Aqua KonoSuba': [gif('a1'), gif('a2')] })),
+        budget: new SearchBudget(10),
         model: 'claude-opus-5-5', effort: 'medium', target: 10, maxSearches: 4, perSearch: 10, minConfidence: 0.7, maxIterations: 10,
       });
 
