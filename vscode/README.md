@@ -65,9 +65,10 @@ Optional, see above. To run the caching API from `../api` instead of upstream:
 Turn on `"amii.giphy.enabled": true` to add curated anime GIFs from GIPHY, tagged by character (so
 they respect your preferred and blocked characters) and captioned "Powered by GIPHY".
 
-- `"amii.giphy.source": "manifest"` (default) reads the reviewed manifest straight from
-  `amii.giphy.manifestUrl`, which defaults to `api/manifests/giphy-characters.json` on GitHub. No server and no GIPHY key needed.
-- `"amii.giphy.source": "api"` asks your hosted AMII API instead.
+- `"amii.giphy.source": "api"` (default) asks your hosted AMII API (`amii.apiUrl`). Its curator grabs
+  new GIFs from GIPHY on a schedule and has Claude categorize them per character.
+- `"amii.giphy.source": "manifest"` reads a manifest file straight from `amii.giphy.manifestUrl`, with no
+  server. Point it at `https://<your-api>/public/giphy/manifest` or at the reviewed file on GitHub.
 
 GIFs are only downloaded from `https://*.giphy.com`.
 
@@ -81,7 +82,7 @@ come from the upstream asset server, and GIPHY GIFs come from the manifest on Gi
 | --- | --- | --- |
 | `amii.apiUrl` | `https://amii.api.unthrottled.io/public/` | `https://<app>.fly.dev/public/` |
 | `amii.assetSource` | `https://amii.assets.unthrottled.io` | `https://<your-cdn>` |
-| `amii.giphy.source` | `manifest` | `api` (optional) |
+| `amii.giphy.source` | `manifest` | `api` (default) |
 
 Definitions are also cached on disk under the extension's global storage and refreshed with
 `changedSince` deltas once a day. Downloaded memes are kept, so the extension keeps working offline.

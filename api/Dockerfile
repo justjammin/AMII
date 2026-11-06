@@ -13,5 +13,6 @@ COPY manifests /manifests
 ENV GIPHY_MANIFEST=/manifests/giphy-characters.json
 ENV PORT=8080
 EXPOSE 8080
-USER nonroot
+# Runs as root so it can write to a Fly volume (mounted root-owned) at CURATOR_DATA_DIR. The app is
+# still isolated in its Fly micro-VM. On hosts with a writable non-root data dir, add `USER nonroot`.
 ENTRYPOINT ["/usr/local/bin/amii-api"]

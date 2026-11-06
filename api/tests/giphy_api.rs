@@ -73,8 +73,10 @@ fn config(giphy_base: &str, key: Option<&str>, budget: u32, fresh: Duration) -> 
             per_category: 25,
             max_gif_bytes: 4 << 20,
             manifest: None,
+            live_search: true,
         },
         giphy_cache: cache,
+        curator: amii_api::curator::CuratorConfig::disabled(),
     }
 }
 

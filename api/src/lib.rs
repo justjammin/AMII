@@ -7,9 +7,11 @@
 //! * `GET  /healthz`
 //! * `GET  /cache/stats`
 //! * `POST /cache/purge` (requires `Authorization: Bearer $ADMIN_TOKEN`)
-//! * `GET  /giphy/{search,trending,gifs/{id}}` and `/public/giphy/visuals` (see [`giphy_routes`])
+//! * `GET  /giphy/{search,trending,gifs/{id}}`, `/public/giphy/visuals`, `/public/giphy/manifest` (see [`giphy_routes`])
+//! * `POST /admin/curator/run`, `GET /admin/curator/status`, `DELETE /admin/giphy/{id}` (see [`curator`])
 
 pub mod cache;
+pub mod curator;
 pub mod giphy_routes;
 
 use std::sync::Arc;
@@ -45,6 +47,7 @@ pub struct Config {
     pub media_redirect_url: Option<String>,
     pub giphy: GiphyConfig,
     pub giphy_cache: CacheConfig,
+    pub curator: curator::CuratorConfig,
 }
 
 impl Config {
@@ -71,6 +74,7 @@ impl Config {
             admin_token: std::env::var("ADMIN_TOKEN").ok().filter(|t| !t.is_empty()),
             media_redirect_url: std::env::var("MEDIA_REDIRECT_URL").ok().filter(|u| !u.is_empty()),
             giphy: GiphyConfig::from_env(),
+            curator: curator::CuratorConfig::from_env(),
             giphy_cache: CacheConfig {
                 fresh_ttl: Duration::from_secs(var("GIPHY_TTL_SECS", 21_600)),
                 stale_ttl: Duration::from_secs(var("GIPHY_STALE_TTL_SECS", 604_800)),
@@ -87,9 +91,15 @@ pub struct AppState {
     media: ResponseCache,
     giphy: Giphy,
     giphy_cache: ResponseCache,
+    curator: curator::CuratorState,
 }
 
 pub fn app(config: Config) -> Router {
+    build(config).0
+}
+
+/// The router plus its shared state (for background jobs such as the curator schedule).
+pub fn build(config: Config) -> (Router, Arc<AppState>) {
     let http = reqwest::Client::builder()
         .timeout(config.upstream_timeout)
         .user_agent(concat!("amii-api/", env!("CARGO_PKG_VERSION")))
@@ -100,18 +110,46 @@ pub fn app(config: Config) -> Router {
         media: ResponseCache::new(config.media_cache),
         giphy: Giphy::new(config.giphy.clone(), http.clone()),
         giphy_cache: ResponseCache::new(config.giphy_cache),
+        curator: curator::CuratorState::load(config.curator.clone()),
         config,
         http,
     });
 
-    Router::new()
+    let router = Router::new()
         .route("/public/assets/{category}", get(definitions))
         .route("/media/{*path}", get(media))
         .route("/healthz", get(|| async { "ok" }))
         .route("/cache/stats", get(stats))
         .route("/cache/purge", post(purge))
         .merge(giphy_routes::routes())
-        .with_state(state)
+        .merge(curator::routes())
+        .with_state(state.clone());
+    (router, state)
+}
+
+/// Raw JSON of an upstream definitions list (anime, characters, ...), via the query cache.
+pub(crate) async fn upstream_definitions(state: &AppState, category: &str) -> Result<Bytes, String> {
+    let key = format!("assets/{category}");
+    let url = format!("{}/{key}", state.config.upstream_api_url.trim_end_matches('/'));
+    state
+        .queries
+        .get_or_fetch(&key, || fetch_upstream(&state.http, &url, "application/json"))
+        .await
+        .map(|(entry, _)| entry.body.clone())
+        .map_err(|e| format!("upstream {key}: {e:?}"))
+}
+
+/// Checks `Authorization: Bearer $ADMIN_TOKEN`. Admin routes 404 when no token is configured.
+pub(crate) fn authorized(state: &AppState, headers: &HeaderMap) -> Result<(), StatusCode> {
+    let Some(token) = &state.config.admin_token else { return Err(StatusCode::NOT_FOUND) };
+    let presented = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "));
+    if presented.is_none_or(|p| !constant_time_eq(p.as_bytes(), token.as_bytes())) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    Ok(())
 }
 
 #[derive(Debug)]
@@ -257,13 +295,8 @@ async fn stats(State(state): State<Arc<AppState>>) -> impl IntoResponse {
 }
 
 async fn purge(State(state): State<Arc<AppState>>, headers: HeaderMap) -> StatusCode {
-    let Some(token) = &state.config.admin_token else { return StatusCode::NOT_FOUND };
-    let presented = headers
-        .get(header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "));
-    if presented.is_none_or(|p| !constant_time_eq(p.as_bytes(), token.as_bytes())) {
-        return StatusCode::UNAUTHORIZED;
+    if let Err(code) = authorized(&state, &headers) {
+        return code;
     }
     state.queries.purge().await;
     state.media.purge().await;

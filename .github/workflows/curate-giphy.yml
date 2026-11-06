@@ -1,5 +1,6 @@
-# Runs the Claude curator agent (agent/) to find new GIPHY GIFs per AMII character, then opens a
-# pull request with the manifest changes so a human reviews every addition before it ships.
+# Optional, manual: runs the Claude curator agent (agent/) for a deeper, agentic pass on specific
+# characters and opens a PR that bakes the results into the API image. The hosted API's built-in
+# curator (api/src/curator.rs) already grabs and categorizes new GIFs on its own schedule.
 #
 # Needs: secrets ANTHROPIC_API_KEY and GIPHY_API_KEY. This is the only place the GIPHY key is used;
 # the deployed API just serves the reviewed manifest. Optional variable AMII_API_URL picks where the
@@ -18,8 +19,6 @@ on:
       target:
         description: New GIFs to aim for per character
         default: "12"
-  schedule:
-    - cron: "41 7 1 * *" # monthly
 
 permissions:
   contents: write

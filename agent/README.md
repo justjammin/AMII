@@ -1,5 +1,9 @@
 # GIPHY character curator (Claude agent)
 
+> **The hosted API now curates on its own** (`api/src/curator.rs`): on a schedule it grabs new GIFs
+> from GIPHY and has Claude categorize them, with no PRs. This CLI is the optional manual tool for a
+> deeper, agentic pass on specific characters. Its output is baked into the API image after PR review.
+
 Builds a manifest of GIPHY GIFs per AMII character, such as Aqua from KonoSuba or Rem from Re:Zero. Each GIF is
 checked to really show that character and tagged with the AMII reaction categories it fits.
 The manifest is reviewed in a pull request, baked into the API image, and merged into

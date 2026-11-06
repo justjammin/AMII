@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
 use crate::cache::{CacheStatus, CachedResponse};
+use crate::curator::ManifestEntry;
 use crate::{AppState, respond};
 
 /// AMII meme categories (ids match the `cat` field of `/public/assets/visuals`) and the
@@ -63,6 +64,9 @@ pub struct GiphyConfig {
     /// Curated per-character manifest (file path or https URL), produced by `agent/` and reviewed
     /// in a PR. Its entries are merged into `/public/giphy/visuals` with character ids.
     pub manifest: Option<String>,
+    /// Mix live per-category GIPHY searches (uncurated, no character tags) into
+    /// `/public/giphy/visuals`. Off by default: with the curator on, editors get only vetted GIFs.
+    pub live_search: bool,
 }
 
 impl GiphyConfig {
@@ -79,6 +83,7 @@ impl GiphyConfig {
             per_category: var("GIPHY_PER_CATEGORY", 25u32).clamp(1, giphy::MAX_LIMIT),
             max_gif_bytes: var("GIPHY_MAX_GIF_MB", 4u32) * 1024 * 1024,
             manifest: std::env::var("GIPHY_MANIFEST").ok().filter(|m| !m.is_empty()),
+            live_search: var("GIPHY_LIVE_SEARCH", false),
         }
     }
 }
@@ -94,7 +99,7 @@ impl Budget {
         Self { limit, window: Mutex::new((Instant::now(), 0)) }
     }
 
-    async fn try_take(&self) -> bool {
+    pub(crate) async fn try_take(&self) -> bool {
         let mut w = self.window.lock().await;
         if w.0.elapsed() >= Duration::from_secs(3600) {
             *w = (Instant::now(), 0);
@@ -165,6 +170,7 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/giphy/trending", get(trending))
         .route("/giphy/gifs/{id}", get(gif))
         .route("/public/giphy/visuals", get(visuals))
+        .route("/public/giphy/manifest", get(manifest))
 }
 
 /// Runs a GIPHY call through the cache + budget and returns its JSON.
@@ -260,7 +266,8 @@ struct VisualsQuery {
 }
 
 async fn visuals(State(state): State<Arc<AppState>>, Query(p): Query<VisualsQuery>, headers: HeaderMap) -> Result<Response, GiphyError> {
-    if state.giphy.client.is_none() && state.giphy.config.manifest.is_none() {
+    let live = state.giphy.client.is_some() && state.giphy.config.live_search;
+    if !live && state.giphy.config.manifest.is_none() && state.curator.store.read().await.entries.is_empty() {
         return Err(GiphyError::NotConfigured);
     }
     let wanted: Vec<_> = match p.categories.as_deref().map(str::trim).filter(|c| !c.is_empty() && *c != "all") {
@@ -278,7 +285,7 @@ async fn visuals(State(state): State<Arc<AppState>>, Query(p): Query<VisualsQuer
     }
 
     let mut tasks = tokio::task::JoinSet::new();
-    let searchable = if state.giphy.client.is_some() { wanted.as_slice() } else { &[] };
+    let searchable = if state.giphy.client.is_some() && state.giphy.config.live_search { wanted.as_slice() } else { &[] };
     for &&(id, name, query) in searchable {
         let state = state.clone();
         tasks.spawn(async move { (id, category_visuals(&state, name, query).await) });
@@ -387,34 +394,29 @@ async fn category_visuals(state: &AppState, name: &str, query: &str) -> Result<(
     Ok((items, status))
 }
 
-/// One reviewed entry of the curated manifest (`agent/` writes these; extra fields are ignored).
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ManifestEntry {
-    giphy_id: String,
-    character_id: String,
-    cat: Vec<u8>,
-    url: String,
-    page: String,
-    #[serde(default)]
-    reason: String,
-    #[serde(default)]
-    rating: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct Manifest {
-    entries: Vec<ManifestEntry>,
-}
-
 fn is_giphy_media(url: &str) -> bool {
     url.strip_prefix("https://")
         .and_then(|rest| rest.split('/').next())
         .is_some_and(|host| host == "giphy.com" || host.ends_with(".giphy.com"))
 }
 
-/// Loads the manifest (cached like any GIPHY response) and turns entries into visuals.
-async fn manifest_visuals(state: &AppState) -> Result<Vec<GiphyVisual>, GiphyError> {
+/// Entries of the baked-in manifest (`GIPHY_MANIFEST`), cached like any GIPHY response.
+/// Problems are logged and treated as an empty manifest.
+pub(crate) async fn baked_entries(state: &AppState) -> Vec<ManifestEntry> {
+    match load_baked(state).await {
+        Ok(entries) => entries,
+        Err(e) => {
+            tracing::warn!(error = ?e, "GIPHY manifest unavailable");
+            Vec::new()
+        }
+    }
+}
+
+async fn load_baked(state: &AppState) -> Result<Vec<ManifestEntry>, GiphyError> {
+    #[derive(Deserialize)]
+    struct Manifest {
+        entries: Vec<ManifestEntry>,
+    }
     let Some(source) = state.giphy.config.manifest.clone() else { return Ok(Vec::new()) };
     let http = state.http.clone();
     let (entry, _) = state
@@ -433,12 +435,28 @@ async fn manifest_visuals(state: &AppState) -> Result<Vec<GiphyVisual>, GiphyErr
         })
         .await?;
     let manifest: Manifest = serde_json::from_slice(&entry.body).map_err(|e| GiphyError::Encode(format!("manifest parse: {e}")))?;
+    Ok(manifest.entries)
+}
+
+/// Baked-in manifest + server-curated GIFs, minus blocked ones, within the rating cap.
+pub(crate) async fn all_entries(state: &AppState) -> Vec<ManifestEntry> {
+    let baked = baked_entries(state).await;
+    let store = state.curator.store.read().await;
+    let blocked: std::collections::HashSet<&str> = store.blocked.iter().map(String::as_str).collect();
     let max = state.giphy.config.max_rating;
-    Ok(manifest
-        .entries
+    baked
         .into_iter()
+        .chain(store.entries.iter().cloned())
+        .filter(|e| !blocked.contains(e.giphy_id.as_str()))
         .filter(|e| is_giphy_media(&e.url) && e.giphy_id.chars().all(|c| c.is_ascii_alphanumeric()))
         .filter(|e| e.rating.parse::<Rating>().map_or(true, |r| r <= max))
+        .collect()
+}
+
+async fn manifest_visuals(state: &AppState) -> Result<Vec<GiphyVisual>, GiphyError> {
+    Ok(all_entries(state)
+        .await
+        .into_iter()
         .map(|e| GiphyVisual {
             id: format!("giphy:{}", e.giphy_id),
             alt: if e.reason.is_empty() { "GIPHY".to_owned() } else { e.reason },
@@ -452,4 +470,13 @@ async fn manifest_visuals(state: &AppState) -> Result<Vec<GiphyVisual>, GiphyErr
             source: "giphy".to_owned(),
         })
         .collect())
+}
+
+/// The combined manifest (baked + curated), for review and for editors in manifest mode.
+async fn manifest(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, GiphyError> {
+    let entries = all_entries(&state).await;
+    let body = serde_json::to_vec(&serde_json::json!({ "version": 1, "entries": entries }))
+        .map_err(|e| GiphyError::Encode(e.to_string()))?;
+    let entry = CachedResponse::new(Bytes::from(body), "application/json".to_owned());
+    Ok(respond(&headers, &entry, CacheStatus::Miss, Duration::from_secs(300)))
 }

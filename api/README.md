@@ -40,14 +40,9 @@ Every cached response carries `X-Cache: HIT|MISS|STALE`, an `ETag` and `Cache-Co
 
 ## GIPHY
 
-**Normal setup: no GIPHY key on the server.** GIPHY GIFs come from the curated manifest
-(`manifests/giphy-characters.json`, built by the [curator agent](../agent/README.md) in CI with its own
-GIPHY key and reviewed in PRs). `/public/giphy/visuals` serves it with character ids; the GIFs
-themselves load from GIPHY's CDN.
-
-**Optional live mode:** setting `GIPHY_API_KEY` here also enables `/giphy/search`, `/giphy/trending`
-and `/giphy/gifs/{id}`, and mixes one live search per category into `/public/giphy/visuals`. These
-use the [`giphy`](giphy/) crate and return 503 without a key. The key stays on the server.
+GIPHY GIFs that editors see come from the **curator** below, plus the optional baked-in manifest
+(`manifests/giphy-characters.json`, e.g. from the [`agent/`](../agent/README.md) CLI). `/giphy/search`,
+`/giphy/trending` and `/giphy/gifs/{id}` are raw GIPHY proxies that need `GIPHY_API_KEY`. The key never leaves the server.
 
 - **Same cache as everything else:** single-flight, stale-while-error, ETags. Search keys are normalized (case, whitespace, clamped limit and rating), so equivalent queries share an entry.
 - **Hourly budget:** `GIPHY_HOURLY_BUDGET` (default 90) caps upstream calls, because beta keys allow about 100 an hour. Once it's spent, cached copies are served `STALE`, and uncached queries get `429` with `Retry-After`. `/cache/stats` shows the remaining budget.
@@ -57,6 +52,33 @@ use the [`giphy`](giphy/) crate and return 503 without a key. The key stays on t
 ## Deploy
 
 See [DEPLOY.md](DEPLOY.md). It covers Fly.io (configured in `fly.toml` and deployed by CI) and any other Docker host via the GHCR image.
+
+## GIPHY curator (built in)
+
+The API grabs new GIPHY GIFs and categorizes them itself (`src/curator.rs`). Every
+`CURATOR_INTERVAL_HOURS` (24 by default), and when you trigger a run:
+
+1. It picks the `CURATOR_CHARACTERS_PER_RUN` characters with the fewest GIFs (from the upstream AMII list).
+2. It searches GIPHY for "<name> <anime>", then "<name> <emotion>" for that character's thinnest categories.
+   Results are rated pg-13 or below, and GIFs it already judged or that were removed are skipped.
+3. It sends all candidates to Claude (`CURATOR_MODEL`, `claude-opus-5-5`) in **one request**, as a label
+   plus the first-frame still for each. Claude returns schema-constrained JSON: is it really this
+   character, 1-3 AMII categories, a confidence, and a reason. Policy declines fall back automatically
+   (`fallbacks: "default"`).
+4. GIFs that show the character, at `CURATOR_MIN_CONFIDENCE` (0.7) or above, are saved to
+   `$CURATOR_DATA_DIR/giphy-curated.json` (a Fly volume) and served right away from `/public/giphy/visuals`,
+   tagged with the character id. Every judged GIF is remembered, so none is paid for twice.
+
+Only GIF ids that were actually sent to Claude can be stored. Cost: one Claude call per character per run,
+with about 20 small images; the token totals are in `/admin/curator/status`.
+
+```bash
+H="Authorization: Bearer $ADMIN_TOKEN"
+curl -X POST -H "$H" "https://<app>.fly.dev/admin/curator/run?characters=Aqua,Megumin"   # run now (202)
+curl -H "$H" https://<app>.fly.dev/admin/curator/status                                  # last run, counts, tokens
+curl https://<app>.fly.dev/public/giphy/manifest                                          # everything served, for review
+curl -X DELETE -H "$H" https://<app>.fly.dev/admin/giphy/<giphyId>                         # remove + block a bad one
+```
 
 ## Run locally
 
@@ -90,7 +112,15 @@ Then in VS Code settings:
 | `UPSTREAM_TIMEOUT_SECS` | `15` |
 | `ADMIN_TOKEN` | unset (purge disabled) |
 | `MEDIA_REDIRECT_URL` | unset. When set to your CDN (see `../cdn`), `/media/*` answers with a 308 redirect there instead of proxying |
-| `GIPHY_API_KEY` | unset (normal; the manifest needs no key). Set it only for live GIPHY search, otherwise those routes return 503 |
+| `GIPHY_API_KEY` | unset. Needed by the curator (and the `/giphy/*` routes, which return 503 without it) |
+| `ANTHROPIC_API_KEY` | unset. Needed by the curator to categorize GIFs |
+| `CURATOR_DATA_DIR` | unset (in memory). `/data` on Fly (volume) |
+| `CURATOR_INTERVAL_HOURS` | `24` (`0` = manual runs only) |
+| `CURATOR_CHARACTERS_PER_RUN` / `CURATOR_SEARCHES_PER_CHARACTER` / `CURATOR_CANDIDATES_PER_CHARACTER` | `5` / `3` / `20` |
+| `CURATOR_TARGET_PER_CHARACTER` | `15` (scheduled runs skip characters that have this many) |
+| `CURATOR_MIN_CONFIDENCE` | `0.7` |
+| `CURATOR_MODEL` / `CURATOR_EFFORT` | `claude-opus-5-5` / `medium` |
+| `GIPHY_LIVE_SEARCH` | `false`. `true` also mixes live, uncurated per-category searches into `/public/giphy/visuals` |
 | `GIPHY_MAX_RATING` | `pg-13` |
 | `GIPHY_QUERY_PREFIX` | `anime` |
 | `GIPHY_PER_CATEGORY` | `25` (max 50) |

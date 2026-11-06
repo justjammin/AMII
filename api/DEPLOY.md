@@ -6,12 +6,12 @@ dollars a month, gets HTTPS on `<app>.fly.dev`, and is deployed by CI from `main
 
 Any other Docker host works too. CI also publishes `ghcr.io/<owner>/amii-api:latest` (see [Other hosts](#other-hosts)).
 
-## 1. GIPHY key: not needed here
+## 1. Get the keys the curator needs
 
-The API serves GIPHY GIFs from the curated manifest baked into its image, so the server needs no
-GIPHY key. The key belongs to the curator workflow as the GitHub secret `GIPHY_API_KEY`; see
-[`../agent/README.md`](../agent/README.md). Get one at <https://developers.giphy.com/dashboard/>
-(**Create an App**, then choose **API**).
+The API's built-in curator grabs new GIPHY GIFs and has Claude categorize them, so the server holds two keys:
+
+- **GIPHY:** go to <https://developers.giphy.com/dashboard/>, **Create an App**, then choose **API**. A beta key (about 100 calls an hour) is plenty: a run uses at most 3 searches per character.
+- **Anthropic:** an API key from <https://console.anthropic.com/>.
 
 ## 2. Create the Fly app (once)
 
@@ -22,12 +22,17 @@ fly auth login
 cd api
 # Pick a unique name and put it in fly.toml's `app = "..."`, then:
 fly launch --no-deploy --copy-config --name <your-app-name>
+fly volumes create amii_data --size 1 --region iad     # curated GIFs live here
 
-fly secrets set ADMIN_TOKEN=$(openssl rand -hex 24)
+fly secrets set GIPHY_API_KEY=<giphy-key> ANTHROPIC_API_KEY=<anthropic-key> ADMIN_TOKEN=$(openssl rand -hex 24)
 fly deploy
 curl https://<your-app-name>.fly.dev/healthz        # -> ok
 curl https://<your-app-name>.fly.dev/cache/stats
+# kick off the first curation instead of waiting for the schedule:
+curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" "https://<your-app-name>.fly.dev/admin/curator/run?characters=Aqua"
 ```
+
+The volume pins the app to one machine in one region, which is what you want: one curated store and one warm cache.
 
 `fly.toml` keeps one machine running all the time (`auto_stop_machines = "off"`), because a
 stopped machine would lose its cache. It health-checks `/healthz`, and its cache sizes add up

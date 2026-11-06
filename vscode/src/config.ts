@@ -36,7 +36,7 @@ export function readConfig(): AmiiConfig {
     apiUrl: get('apiUrl', 'https://amii.api.unthrottled.io/public/'),
     giphyEnabled: get('giphy.enabled', false),
     giphySource:
-      get<'manifest' | 'api'>('giphy.source', 'manifest') === 'api'
+      get<'manifest' | 'api'>('giphy.source', 'api') === 'api'
         ? { kind: 'api' }
         : { kind: 'manifest', url: get('giphy.manifestUrl', DEFAULT_MANIFEST_URL) || DEFAULT_MANIFEST_URL },
     assetSource: get('assetSource', 'https://amii.assets.unthrottled.io'),

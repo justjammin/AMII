@@ -16,9 +16,18 @@ primary_region = "iad"
   GIPHY_HOURLY_BUDGET = "90"
   # With the Cloudflare CDN (cdn/) deployed, send /media/* there and shrink MEDIA_CACHE_MB:
   # MEDIA_REDIRECT_URL = "https://cdn.example.com"
-  # Secrets (set with `fly secrets set`, never here): ADMIN_TOKEN.
-  # GIPHY_API_KEY is NOT needed here: GIPHY GIFs come from the curated manifest baked into the image.
-  # Only set it if you also want live GIPHY search results mixed in (uses ~19 GIPHY calls per cache refresh).
+  # GIPHY curator: grabs new GIFs per character and has Claude categorize them, on a schedule.
+  CURATOR_DATA_DIR = "/data"
+  CURATOR_INTERVAL_HOURS = "24"
+  CURATOR_CHARACTERS_PER_RUN = "5"
+  CURATOR_MODEL = "claude-opus-5-5"
+  # Secrets (set with `fly secrets set`, never here): GIPHY_API_KEY, ANTHROPIC_API_KEY, ADMIN_TOKEN.
+
+# Curated GIFs, judged GIF ids and admin removals live here (survives deploys and restarts).
+# Create once: fly volumes create amii_data --size 1 --region iad
+[mounts]
+  source = "amii_data"
+  destination = "/data"
 
 [http_service]
   internal_port = 8080

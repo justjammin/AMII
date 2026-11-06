@@ -16,7 +16,9 @@ async fn main() -> std::io::Result<()> {
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     tracing::info!(%addr, upstream = %config.upstream_api_url, "starting amii-api");
 
-    let app = amii_api::app(config)
+    let (app, state) = amii_api::build(config);
+    amii_api::curator::spawn_scheduler(state);
+    let app = app
         .layer(CompressionLayer::new())
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http());

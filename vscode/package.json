@@ -49,10 +49,10 @@
           "type": "string",
           "enum": ["manifest", "api"],
           "enumDescriptions": [
-            "Read the curated GIF manifest directly from `amii.giphy.manifestUrl`. No server needed.",
-            "Ask your AMII API (`amii.apiUrl`) for GIPHY memes. Use this if you host the API."
+            "Read a curated GIF manifest directly from `amii.giphy.manifestUrl`. No server needed.",
+            "Ask your AMII API (`amii.apiUrl`) for GIPHY memes, including the GIFs its curator grabs and categorizes."
           ],
-          "default": "manifest",
+          "default": "api",
           "markdownDescription": "Where GIPHY memes come from when `amii.giphy.enabled` is on."
         },
         "amii.giphy.manifestUrl": {

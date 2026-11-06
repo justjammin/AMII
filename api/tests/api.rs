@@ -68,8 +68,10 @@ pub fn config(base: &str, fresh: Duration) -> Config {
             per_category: 25,
             max_gif_bytes: 4 << 20,
             manifest: None,
+            live_search: false,
         },
         giphy_cache: cache,
+        curator: amii_api::curator::CuratorConfig::disabled(),
     }
 }
 
