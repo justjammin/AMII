@@ -1,0 +1,58 @@
+# Copies every AMII meme image/audio into the Cloudflare R2 bucket behind the CDN Worker (cdn/).
+# Runs weekly to pick up new assets, or on demand from the Actions tab.
+# Needs the repository variable CDN_URL (e.g. https://cdn.example.com) or the cdn_url input.
+name: Mirror AMII assets to CDN
+
+on:
+  workflow_dispatch:
+    inputs:
+      cdn_url:
+        description: CDN base URL (defaults to the CDN_URL repository variable)
+        required: false
+      limit:
+        description: Only mirror the first N assets (blank = all)
+        required: false
+      concurrency:
+        description: Parallel requests
+        default: "8"
+  schedule:
+    - cron: "17 6 * * 1" # Mondays 06:17 UTC
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        working-directory: cdn
+    env:
+      CDN_URL: ${{ inputs.cdn_url || vars.CDN_URL }}
+      AMII_API_URL: ${{ vars.AMII_API_URL || 'https://amii.api.unthrottled.io/public/' }}
+    steps:
+      - name: Skip when no CDN is configured
+        if: env.CDN_URL == ''
+        working-directory: .
+        run: echo "::notice::Set the CDN_URL repository variable (or pass cdn_url) to mirror assets."
+      - uses: actions/checkout@v4
+        if: env.CDN_URL != ''
+      - uses: actions/setup-node@v4
+        if: env.CDN_URL != ''
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: cdn/package-lock.json
+      - name: Mirror
+        if: env.CDN_URL != ''
+        run: |
+          npm ci
+          npx tsc -p .
+          node out/scripts/mirror.js --cdn "$CDN_URL" --api "$AMII_API_URL" \
+            --concurrency "${{ inputs.concurrency || '8' }}" \
+            ${{ inputs.limit && format('--limit {0}', inputs.limit) || '' }} \
+            --report mirror-report.json
+      - uses: actions/upload-artifact@v4
+        if: always() && env.CDN_URL != ''
+        with:
+          name: mirror-report
+          path: cdn/mirror-report.json
+          if-no-files-found: ignore

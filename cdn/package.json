@@ -7,7 +7,8 @@
     "test": "tsc -p . && node --test out/test/*.test.js",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "check": "wrangler deploy --dry-run --outdir out/bundle"
+    "check": "wrangler deploy --dry-run --outdir out/bundle",
+    "mirror": "tsc -p . && node out/scripts/mirror.js"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

@@ -91,8 +91,19 @@ npx wrangler tail                                       # live logs
 npx wrangler r2 object delete amii-assets/visuals/x.gif # evict one file (edge copies age out per CACHE_CONTROL)
 ```
 
-To warm it ahead of time, request the paths once: `curl -s -o /dev/null <cdn>/visuals/<path>` for
-each `path` in `/public/assets/visuals`.
+### Mirror everything up front
+
+```bash
+npm run mirror -- --cdn https://cdn.example.com          # every visual + audio clip into R2
+npm run mirror -- --cdn https://cdn.example.com --dry-run --limit 20
+```
+
+`scripts/mirror.ts` lists all assets from the AMII API and sends a `HEAD` for each through the Worker.
+Each miss is fetched from the origin and stored in R2, with no R2 keys needed. Re-runs only copy new
+files. Transient failures are retried, and assets the origin no longer has are reported but don't fail the run.
+
+From GitHub, set the repository variable `CDN_URL`. The **Mirror AMII assets to CDN** workflow
+then runs every Monday and on demand from the Actions tab, and uploads `mirror-report.json`.
 
 **Cost:** R2 includes 10 GB of storage and 10 million reads a month free, with no egress charges. The
 Workers free plan allows 100k requests a day; the paid plan ($5/mo) raises that to 10 million a month.
@@ -100,7 +111,7 @@ Workers free plan allows 100k requests a day; the paid plan ($5/mo) raises that 
 ## Develop
 
 ```bash
-npm test               # node:test with a fake R2 + edge cache: tiers, 304s, HEAD, refusal rules
+npm test               # node:test with a fake R2 + edge cache: tiers, 304s, HEAD, refusal rules, mirror script
 npm run check          # wrangler dry-run bundle
 npx wrangler dev --local --var ORIGIN:http://127.0.0.1:8000   # real workerd + local R2
 ```
