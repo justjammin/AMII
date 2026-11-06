@@ -62,6 +62,18 @@ VS Code (`settings.json`):
 IntelliJ plugin: launch the IDE with
 `API_URL=https://<your-app-name>.fly.dev/public/ ASSET_SOURCE=https://<your-app-name>.fly.dev/media`.
 
+## Optional: put the GIFs on Cloudflare
+
+Serving GIF and audio bytes is most of the bandwidth. Deploy the R2-backed Worker in
+[`../cdn`](../cdn/README.md), then:
+
+1. Point editors' `amii.assetSource` (or `ASSET_SOURCE`) at the CDN.
+2. Set `MEDIA_REDIRECT_URL = "https://<cdn-host>"` and `MEDIA_CACHE_MB = "8"` in `fly.toml` `[env]`, then `fly deploy`.
+   Old clients that still request `/media/*` are redirected (308) to the CDN.
+
+The Fly app then only answers small JSON queries, and a 256 MB machine is enough (`fly scale memory 256`).
+GIPHY GIFs stay on GIPHY's CDN, as their terms require.
+
 ## Operating it
 
 ```bash

@@ -63,6 +63,7 @@ fn config(giphy_base: &str, key: Option<&str>, budget: u32, fresh: Duration) -> 
         changed_since_bucket_secs: 3600,
         upstream_timeout: Duration::from_secs(5),
         admin_token: None,
+        media_redirect_url: None,
         giphy: GiphyConfig {
             api_key: key.map(Into::into),
             base_url: giphy_base.into(),

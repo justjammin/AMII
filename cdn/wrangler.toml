@@ -1,0 +1,23 @@
+# Cloudflare Worker + R2 pull-through CDN for AMII media.
+# 1. npx wrangler r2 bucket create amii-assets
+# 2. npx wrangler deploy
+# 3. (recommended) attach a custom domain below so the edge cache is used (it's a no-op on *.workers.dev).
+name = "amii-cdn"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+[[r2_buckets]]
+binding = "ASSETS"
+bucket_name = "amii-assets"
+
+[vars]
+ORIGIN = "https://amii.assets.unthrottled.io"
+MAX_OBJECT_MB = "25"
+CACHE_CONTROL = "public, max-age=604800, stale-while-revalidate=86400"
+
+# Uncomment once the domain is on Cloudflare:
+# routes = [{ pattern = "cdn.example.com", custom_domain = true }]
+
+[observability]
+enabled = true

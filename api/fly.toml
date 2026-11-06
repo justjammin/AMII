@@ -14,6 +14,8 @@ primary_region = "iad"
   GIPHY_CACHE_MB = "16"
   GIPHY_MAX_RATING = "pg-13"
   GIPHY_HOURLY_BUDGET = "90"
+  # With the Cloudflare CDN (cdn/) deployed, send /media/* there and shrink MEDIA_CACHE_MB:
+  # MEDIA_REDIRECT_URL = "https://cdn.example.com"
   # Secrets (set with `fly secrets set`, never here): GIPHY_API_KEY, ADMIN_TOKEN
 
 [http_service]

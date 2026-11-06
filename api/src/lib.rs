@@ -40,6 +40,9 @@ pub struct Config {
     pub changed_since_bucket_secs: u64,
     pub upstream_timeout: Duration,
     pub admin_token: Option<String>,
+    /// When set (e.g. `https://cdn.example.com`), `/media/*` answers with a 308 to the CDN
+    /// instead of proxying bytes through this service.
+    pub media_redirect_url: Option<String>,
     pub giphy: GiphyConfig,
     pub giphy_cache: CacheConfig,
 }
@@ -66,6 +69,7 @@ impl Config {
             changed_since_bucket_secs: var("CHANGED_SINCE_BUCKET_SECS", 3_600u64).max(1),
             upstream_timeout: Duration::from_secs(var("UPSTREAM_TIMEOUT_SECS", 15)),
             admin_token: std::env::var("ADMIN_TOKEN").ok().filter(|t| !t.is_empty()),
+            media_redirect_url: std::env::var("MEDIA_REDIRECT_URL").ok().filter(|u| !u.is_empty()),
             giphy: GiphyConfig::from_env(),
             giphy_cache: CacheConfig {
                 fresh_ttl: Duration::from_secs(var("GIPHY_TTL_SECS", 21_600)),
@@ -222,6 +226,14 @@ async fn media(
 ) -> Result<Response, UpstreamError> {
     if !valid_media_path(&path) {
         return Ok(StatusCode::NOT_FOUND.into_response());
+    }
+    if let Some(cdn) = &state.config.media_redirect_url {
+        let location = format!("{}/{path}", cdn.trim_end_matches('/'));
+        return Ok((
+            StatusCode::PERMANENT_REDIRECT,
+            [(header::LOCATION, location), (header::CACHE_CONTROL, "public, max-age=86400".to_owned())],
+        )
+            .into_response());
     }
     let base = state.config.upstream_asset_url.trim_end_matches('/');
     let url = format!("{base}/{path}");

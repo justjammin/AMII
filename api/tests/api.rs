@@ -58,6 +58,7 @@ pub fn config(base: &str, fresh: Duration) -> Config {
         changed_since_bucket_secs: 3600,
         upstream_timeout: Duration::from_secs(5),
         admin_token: Some("s3cret".into()),
+        media_redirect_url: None,
         giphy: amii_api::giphy_routes::GiphyConfig {
             api_key: None,
             base_url: giphy::DEFAULT_BASE_URL.into(),
@@ -188,4 +189,17 @@ async fn purge_requires_admin_token() {
     let (status, _, stats) = send(&app, get_req("/cache/stats")).await;
     assert_eq!(status, StatusCode::OK);
     assert!(stats.contains("\"misses\":2"), "{stats}");
+}
+
+#[tokio::test]
+async fn redirects_media_to_cdn_when_configured() {
+    let (base, upstream) = start_upstream().await;
+    let mut cfg = config(&base, Duration::from_secs(60));
+    cfg.media_redirect_url = Some("https://cdn.example.com/".into());
+    let app = app(cfg);
+    let (status, headers, _) = send(&app, get_req("/media/visuals/happy/aqua.gif")).await;
+    assert_eq!(status, StatusCode::PERMANENT_REDIRECT);
+    assert_eq!(headers["location"], "https://cdn.example.com/visuals/happy/aqua.gif");
+    assert_eq!(send(&app, get_req("/media/visuals/../x.gif")).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(upstream.hits.load(Ordering::SeqCst), 0);
 }
