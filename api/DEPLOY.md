@@ -97,8 +97,8 @@ and runs as non-root. Set the same env vars and secrets.
 | Host | How |
 | --- | --- |
 | **Render** | New Web Service, then Existing image `ghcr.io/<owner>/amii-api:latest`. Health check path `/healthz`, and add the env vars. Use a paid instance; free ones sleep and drop the cache. |
-| **Google Cloud Run** | `gcloud run deploy amii-api --image ghcr.io/<owner>/amii-api:latest --port 8080 --min-instances 1 --set-secrets GIPHY_API_KEY=giphy-key:latest` (mirror the image to Artifact Registry if your project requires it). |
-| **Any VPS** | `docker run -d --restart unless-stopped -p 8080:8080 -e GIPHY_API_KEY=... ghcr.io/<owner>/amii-api:latest` behind Caddy or nginx for TLS. |
+| **Google Cloud Run** | `gcloud run deploy amii-api --image ghcr.io/<owner>/amii-api:latest --port 8080 --min-instances 1 --set-secrets ADMIN_TOKEN=amii-admin-token:latest` (mirror the image to Artifact Registry if your project requires it). |
+| **Any VPS** | `docker run -d --restart unless-stopped -p 8080:8080 -e ADMIN_TOKEN=... ghcr.io/<owner>/amii-api:latest` behind Caddy or nginx for TLS. |
 
 GHCR packages start out private. Make it public under **Package settings** or give the host
 pull credentials.

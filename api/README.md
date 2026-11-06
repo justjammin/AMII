@@ -90,7 +90,7 @@ Then in VS Code settings:
 | `UPSTREAM_TIMEOUT_SECS` | `15` |
 | `ADMIN_TOKEN` | unset (purge disabled) |
 | `MEDIA_REDIRECT_URL` | unset. When set to your CDN (see `../cdn`), `/media/*` answers with a 308 redirect there instead of proxying |
-| `GIPHY_API_KEY` | unset (GIPHY routes return 503) |
+| `GIPHY_API_KEY` | unset (normal; the manifest needs no key). Set it only for live GIPHY search, otherwise those routes return 503 |
 | `GIPHY_MAX_RATING` | `pg-13` |
 | `GIPHY_QUERY_PREFIX` | `anime` |
 | `GIPHY_PER_CATEGORY` | `25` (max 50) |
