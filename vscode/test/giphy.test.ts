@@ -32,7 +32,7 @@ describe('GIPHY source', () => {
     }) as unknown as typeof fetch;
 
     const store = new AssetStore({ apiUrl: 'https://my-api.test/public/', assetSource: 'https://cdn.test', storageDir: dir, fetchImpl });
-    const items = await store.loadGiphy();
+    const items = await store.loadGiphy({ kind: 'api' });
     assert.deepEqual(items.map((i) => i.id), ['giphy:a']);
     assert.equal(calls[0], 'https://my-api.test/public/giphy/visuals');
 
@@ -57,5 +57,37 @@ describe('GIPHY source', () => {
     assert.equal(await fs.readFile(f1!, 'utf8'), 'GIF89a');
     assert.equal(calls.filter((c) => c.includes('media.giphy.com')).length, 1);
     assert.equal(await store.resolveUrl('https://evil.example/x.gif'), undefined);
+  });
+
+  it('works with no server: reads the curated manifest directly and tags characters', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'amii-manifest-'));
+    const calls: string[] = [];
+    let online = true;
+    const manifest = {
+      version: 1,
+      entries: [
+        { giphyId: 'abc', characterId: 'c1', cat: [5], reason: 'Aqua smirking', url: 'https://media.giphy.com/media/abc/giphy.gif', page: 'https://giphy.com/gifs/abc', rating: 'g' },
+        { giphyId: 'abc', characterId: 'c2', cat: [4], reason: 'dup for Megumin', url: 'https://media.giphy.com/media/abc/giphy.gif', rating: 'g' },
+        { giphyId: 'spicy', characterId: 'c1', cat: [4], url: 'https://media.giphy.com/media/spicy/giphy.gif', rating: 'r' },
+        { giphyId: 'evil', characterId: 'c1', cat: [4], url: 'https://evil.example/x.gif', rating: 'g' },
+      ],
+    };
+    const fetchImpl = (async (url: URL | string) => {
+      calls.push(String(url));
+      if (!online) throw new Error('offline');
+      return Response.json(manifest);
+    }) as unknown as typeof fetch;
+    const url = 'https://raw.githubusercontent.com/justjammin/AMII/main/api/manifests/giphy-characters.json';
+    // apiUrl points nowhere: manifest mode must not touch it.
+    const store = new AssetStore({ apiUrl: 'https://no-server.invalid/public/', assetSource: 'https://cdn.test', storageDir: dir, fetchImpl });
+
+    const items = await store.loadGiphy({ kind: 'manifest', url });
+    assert.deepEqual(calls, [url]);
+    assert.deepEqual(items.map((i) => [i.id, i.cat, i.char]), [['giphy:abc', [5, 4], ['c1', 'c2']]]);
+    assert.equal(items[0].page, 'https://giphy.com/gifs/abc');
+
+    online = false;
+    assert.equal((await store.loadGiphy({ kind: 'manifest', url }, true)).length, 1, 'last good copy when offline');
+    assert.deepEqual(await store.loadGiphy({ kind: 'manifest', url: 'http://insecure.example/m.json' }), [], 'https only');
   });
 });

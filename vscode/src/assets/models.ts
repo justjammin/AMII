@@ -43,6 +43,50 @@ export interface GiphyVisualRepresentation extends Representation {
   source: 'giphy';
 }
 
+/** The curated per-character GIPHY manifest (api/manifests/giphy-characters.json). */
+export interface GiphyManifest {
+  version: number;
+  entries: {
+    giphyId: string;
+    characterId: string;
+    cat: number[];
+    reason?: string;
+    url: string;
+    page?: string;
+    rating?: string;
+  }[];
+}
+
+const RATING_ORDER = ['g', 'pg', 'pg-13', 'r'];
+
+/**
+ * Turns manifest entries into the same shape `/public/giphy/visuals` serves, merging categories and
+ * characters when one GIF is listed for several characters. Entries rated above pg-13 are dropped.
+ */
+export function manifestToVisuals(manifest: GiphyManifest): GiphyVisualRepresentation[] {
+  const byId = new Map<string, GiphyVisualRepresentation>();
+  for (const e of manifest.entries ?? []) {
+    if (!/^[A-Za-z0-9]+$/.test(e.giphyId)) continue;
+    const rating = RATING_ORDER.indexOf((e.rating ?? '').toLowerCase());
+    if (rating > RATING_ORDER.indexOf('pg-13')) continue;
+    const id = `giphy:${e.giphyId}`;
+    const v = byId.get(id) ?? {
+      id,
+      alt: e.reason || 'GIPHY',
+      cat: [],
+      char: [],
+      lewd: false,
+      url: e.url,
+      page: e.page || `https://giphy.com/gifs/${e.giphyId}`,
+      source: 'giphy' as const,
+    };
+    for (const c of e.cat) if (!v.cat.includes(c)) v.cat.push(c);
+    if (!v.char!.includes(e.characterId)) v.char!.push(e.characterId);
+    byId.set(id, v);
+  }
+  return [...byId.values()];
+}
+
 export type DefinitionCategory = 'visuals' | 'audible' | 'anime' | 'characters';
 export const DEFINITION_CATEGORIES: readonly DefinitionCategory[] = ['anime', 'characters', 'visuals', 'audible'];
 

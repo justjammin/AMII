@@ -43,7 +43,22 @@
         "amii.giphy.enabled": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Mix in GIPHY anime reaction GIFs. Requires `amii.apiUrl` to point at your own AMII API with `GIPHY_API_KEY` set (the key never leaves the server)."
+          "markdownDescription": "Mix in curated GIPHY anime reaction GIFs, tagged by character. By default they come straight from the reviewed manifest (`amii.giphy.source`), so no server or GIPHY key is needed."
+        },
+        "amii.giphy.source": {
+          "type": "string",
+          "enum": ["manifest", "api"],
+          "enumDescriptions": [
+            "Read the curated GIF manifest directly from `amii.giphy.manifestUrl`. No server needed.",
+            "Ask your AMII API (`amii.apiUrl`) for GIPHY memes. Use this if you host the API."
+          ],
+          "default": "manifest",
+          "markdownDescription": "Where GIPHY memes come from when `amii.giphy.enabled` is on."
+        },
+        "amii.giphy.manifestUrl": {
+          "type": "string",
+          "default": "https://raw.githubusercontent.com/justjammin/AMII/main/api/manifests/giphy-characters.json",
+          "markdownDescription": "The curated per-character GIPHY manifest (https). Defaults to the reviewed file in the repo; point it at your CDN copy if you prefer."
         },
         "amii.assetSource": {
           "type": "string",

@@ -5,7 +5,9 @@ import {
   DefinitionCategory,
   Definitions,
   DEFINITION_CATEGORIES,
+  GiphyManifest,
   GiphyVisualRepresentation,
+  manifestToVisuals,
   mergeDefinitions,
   Representation,
 } from './models';
@@ -110,29 +112,38 @@ export class AssetStore implements MediaResolver {
   }
 
   /**
-   * GIPHY-sourced meme definitions served by your AMII API (`<apiUrl>/giphy/visuals`).
-   * Cached on disk like the other definitions; returns [] if the API has GIPHY disabled.
+   * GIPHY meme definitions, from one of two sources:
+   * - `api`: your AMII API's `/giphy/visuals` (needs a server)
+   * - `manifest`: the curated manifest JSON fetched directly (GitHub raw URL, your CDN, any https URL),
+   *   so no server is needed.
+   * Cached on disk with a daily refresh; the last good copy is used when offline.
    */
-  async loadGiphy(force = false): Promise<GiphyVisualRepresentation[]> {
-    const file = within(path.resolve(this.opts.storageDir), 'api', 'giphy', 'visuals.json');
+  async loadGiphy(source: { kind: 'api' } | { kind: 'manifest'; url: string }, force = false): Promise<GiphyVisualRepresentation[]> {
+    const file = within(path.resolve(this.opts.storageDir), 'api', 'giphy', `${source.kind}.json`);
     const metaFile = `${file}.meta`;
     const existing = await readJson<GiphyVisualRepresentation[]>(file);
-    const meta = await readJson<Meta>(metaFile);
+    const meta = await readJson<Meta & { from?: string }>(metaFile);
+    const url = source.kind === 'api' ? new URL('giphy/visuals', withSlash(this.opts.apiUrl)) : new URL(source.url);
     const interval = this.opts.refreshIntervalMs ?? DAY_MS;
-    if (existing && meta && Date.now() - meta.fetchedAt <= interval && !force) return existing;
+    const fresh = meta && meta.from === String(url) && Date.now() - meta.fetchedAt <= interval;
+    if (existing && fresh && !force) return existing;
 
-    const url = new URL('giphy/visuals', withSlash(this.opts.apiUrl));
     try {
+      if (url.protocol !== 'https:' && url.hostname !== '127.0.0.1' && url.hostname !== 'localhost') {
+        throw new Error('manifest URL must be https');
+      }
       const res = await this.fetchImpl(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const body = ((await res.json()) as GiphyVisualRepresentation[]).filter((v) => isAllowedMediaUrl(v.url));
+      const json = await res.json();
+      const visuals = source.kind === 'api' ? (json as GiphyVisualRepresentation[]) : manifestToVisuals(json as GiphyManifest);
+      const body = visuals.filter((v) => isAllowedMediaUrl(v.url));
       await writeFileAtomic(file, JSON.stringify(body));
-      await writeFileAtomic(metaFile, JSON.stringify({ fetchedAt: Date.now() } satisfies Meta));
-      this.log(`Synced GIPHY: ${body.length} memes`);
+      await writeFileAtomic(metaFile, JSON.stringify({ fetchedAt: Date.now(), from: String(url) }));
+      this.log(`Synced GIPHY (${source.kind}): ${body.length} memes`);
       return body;
     } catch (err) {
       this.log(`Unable to sync GIPHY memes from ${url}: ${String(err)}`);
-      return existing ?? [];
+      return meta?.from === String(url) ? existing ?? [] : [];
     }
   }
 

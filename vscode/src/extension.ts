@@ -76,7 +76,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const sync = async (force: boolean) => {
     const defs = await store.loadAll(force);
     repo.index(defs);
-    repo.indexGiphy(config.giphyEnabled ? await store.loadGiphy(force) : []);
+    repo.indexGiphy(config.giphyEnabled ? await store.loadGiphy(config.giphySource, force) : []);
     const custom = await repo.scanCustom(config.customAssetsPath || undefined);
     log(`Indexed ${repo.size} memes (${defs.visuals.length} AMII, ${custom} custom).`);
     return repo.size;
@@ -103,7 +103,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (
         previous.apiUrl !== config.apiUrl ||
         previous.assetSource !== config.assetSource ||
-        previous.giphyEnabled !== config.giphyEnabled
+        previous.giphyEnabled !== config.giphyEnabled ||
+        JSON.stringify(previous.giphySource) !== JSON.stringify(config.giphySource)
       ) {
         store = makeStore();
         void sync(true);

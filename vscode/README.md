@@ -53,8 +53,7 @@ patiently_waiting, pouting. Set `amii.onlyCustomAssets` to use only your own mem
 
 ## Using your own caching API
 
-By default the extension queries the upstream AMII API. To run the caching API from `../api`
-instead:
+Optional, see above. To run the caching API from `../api` instead of upstream:
 
 ```json
 "amii.apiUrl": "http://localhost:8080/public/",
@@ -63,10 +62,26 @@ instead:
 
 ### GIPHY memes
 
-With your API deployed, turn on `"amii.giphy.enabled": true`. The curated per-character GIPHY GIFs
-from the API's manifest then join the pool, captioned "Powered by GIPHY", and count toward your
-preferred characters. Click one
-to open it on GIPHY. GIFs are only downloaded from `https://*.giphy.com`.
+Turn on `"amii.giphy.enabled": true` to add curated anime GIFs from GIPHY, tagged by character (so
+they respect your preferred and blocked characters) and captioned "Powered by GIPHY".
+
+- `"amii.giphy.source": "manifest"` (default) reads the reviewed manifest straight from
+  `amii.giphy.manifestUrl`, which defaults to `api/manifests/giphy-characters.json` on GitHub. No server and no GIPHY key needed.
+- `"amii.giphy.source": "api"` asks your hosted AMII API instead.
+
+GIFs are only downloaded from `https://*.giphy.com`.
+
+## Running with no server at all
+
+Every default works without hosting anything: AMII's meme lists come from the upstream API, the images
+come from the upstream asset server, and GIPHY GIFs come from the manifest on GitHub. Hosting the
+`api/` server or the `cdn/` Worker is optional and adds caching, a CDN, and independence from upstream:
+
+| Setting | No server (default) | Self-hosted |
+| --- | --- | --- |
+| `amii.apiUrl` | `https://amii.api.unthrottled.io/public/` | `https://<app>.fly.dev/public/` |
+| `amii.assetSource` | `https://amii.assets.unthrottled.io` | `https://<your-cdn>` |
+| `amii.giphy.source` | `manifest` | `api` (optional) |
 
 Definitions are also cached on disk under the extension's global storage and refreshed with
 `changedSince` deltas once a day. Downloaded memes are kept, so the extension keeps working offline.

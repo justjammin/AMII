@@ -6,6 +6,7 @@ import { UserEventType } from './core/types';
 export interface AmiiConfig {
   apiUrl: string;
   giphyEnabled: boolean;
+  giphySource: { kind: 'api' } | { kind: 'manifest'; url: string };
   assetSource: string;
   displayMode: 'beside' | 'panel';
   displayDurationMs: number;
@@ -26,6 +27,7 @@ export interface AmiiConfig {
 }
 
 const MINUTE = 60_000;
+export const DEFAULT_MANIFEST_URL = 'https://raw.githubusercontent.com/justjammin/AMII/main/api/manifests/giphy-characters.json';
 
 export function readConfig(): AmiiConfig {
   const c = vscode.workspace.getConfiguration('amii');
@@ -33,6 +35,10 @@ export function readConfig(): AmiiConfig {
   return {
     apiUrl: get('apiUrl', 'https://amii.api.unthrottled.io/public/'),
     giphyEnabled: get('giphy.enabled', false),
+    giphySource:
+      get<'manifest' | 'api'>('giphy.source', 'manifest') === 'api'
+        ? { kind: 'api' }
+        : { kind: 'manifest', url: get('giphy.manifestUrl', DEFAULT_MANIFEST_URL) || DEFAULT_MANIFEST_URL },
     assetSource: get('assetSource', 'https://amii.assets.unthrottled.io'),
     displayMode: get('displayMode', 'beside'),
     displayDurationMs: get('memeDisplayDurationSeconds', 40) * 1000,
