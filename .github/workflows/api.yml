@@ -109,9 +109,19 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: cdn/package-lock.json
+      - name: Ensure R2 bucket exists
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        run: |
+          npm ci
+          bucket=$(grep -m1 'bucket_name' wrangler.toml | cut -d'"' -f2)
+          if npx wrangler r2 bucket info "$bucket" >/dev/null 2>&1; then
+            echo "R2 bucket $bucket exists"
+          else
+            npx wrangler r2 bucket create "$bucket"
+          fi
       - name: Deploy Worker
         if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
-        run: npm ci && npx wrangler deploy
+        run: npx wrangler deploy
 
   image:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
