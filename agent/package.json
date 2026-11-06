@@ -1,0 +1,23 @@
+{
+  "name": "amii-giphy-curator",
+  "version": "1.0.0",
+  "description": "Claude agent that curates GIPHY GIFs per AMII character into a reviewed manifest.",
+  "main": "out/src/cli.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "test": "tsc -p . && node --test out/test/*.test.js",
+    "curate": "tsc -p . && node out/src/cli.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.6.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2"
+  },
+  "private": true
+}

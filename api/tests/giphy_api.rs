@@ -72,6 +72,7 @@ fn config(giphy_base: &str, key: Option<&str>, budget: u32, fresh: Duration) -> 
             hourly_budget: budget,
             per_category: 25,
             max_gif_bytes: 4 << 20,
+            manifest: None,
         },
         giphy_cache: cache,
     }
@@ -156,4 +157,53 @@ async fn unconfigured_giphy_is_503() {
     let app = app(config(&base, None, 90, Duration::from_secs(60)));
     assert_eq!(get_json(&app, "/public/giphy/visuals").await.0, StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(get_json(&app, "/giphy/trending").await.0, StatusCode::SERVICE_UNAVAILABLE);
+}
+
+fn write_manifest(dir: &std::path::Path) -> String {
+    let path = dir.join("giphy-characters.json");
+    std::fs::write(
+        &path,
+        r#"{"version":1,"updatedAt":"2026-11-06T00:00:00Z","entries":[
+          {"giphyId":"shared","characterId":"c1","characterName":"Aqua","anime":"KonoSuba","cat":[5],"confidence":0.9,
+           "reason":"Aqua smirking","url":"https://media.giphy.com/media/shared/giphy.gif","page":"https://giphy.com/gifs/shared","rating":"g"},
+          {"giphyId":"aquacry","characterId":"c1","characterName":"Aqua","anime":"KonoSuba","cat":[12,13],"confidence":0.8,
+           "reason":"Aqua crying","url":"https://media.giphy.com/media/aquacry/giphy.gif","page":"https://giphy.com/gifs/aquacry","rating":"pg"},
+          {"giphyId":"evil","characterId":"c1","characterName":"Aqua","anime":"KonoSuba","cat":[4],"confidence":0.9,
+           "reason":"x","url":"https://evil.example/x.gif","page":"","rating":"g"},
+          {"giphyId":"spicy","characterId":"c1","characterName":"Aqua","anime":"KonoSuba","cat":[4],"confidence":0.9,
+           "reason":"x","url":"https://media.giphy.com/media/spicy/giphy.gif","page":"","rating":"r"}
+        ]}"#,
+    )
+    .unwrap();
+    path.to_string_lossy().into_owned()
+}
+
+#[tokio::test]
+async fn curated_manifest_is_served_with_character_ids() {
+    let dir = std::env::temp_dir().join(format!("amii-manifest-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let (base, mock) = start_giphy().await;
+
+    // No GIPHY key: the manifest alone is served, no GIPHY calls.
+    let mut cfg = config(&base, None, 90, Duration::from_secs(600));
+    cfg.giphy.manifest = Some(write_manifest(&dir));
+    let app_no_key = app(cfg);
+    let (status, _, body) = get_json(&app_no_key, "/public/giphy/visuals").await;
+    assert_eq!(status, StatusCode::OK);
+    let ids: Vec<&str> = body.as_array().unwrap().iter().map(|v| v["id"].as_str().unwrap()).collect();
+    assert_eq!(ids, ["giphy:aquacry", "giphy:shared"], "non-GIPHY url and over-cap rating dropped");
+    assert_eq!(body[0]["char"], serde_json::json!(["c1"]));
+    assert_eq!(mock.hits.load(Ordering::SeqCst), 0);
+
+    // Category filter applies to manifest entries too.
+    let (_, _, smug) = get_json(&app_no_key, "/public/giphy/visuals?categories=smug").await;
+    assert_eq!(smug.as_array().unwrap().len(), 1);
+
+    // With a key: live search results and manifest merge; the shared GIF gains the character.
+    let mut cfg = config(&base, Some("k"), 90, Duration::from_secs(600));
+    cfg.giphy.manifest = Some(write_manifest(&dir));
+    let (_, _, merged) = get_json(&app(cfg), "/public/giphy/visuals").await;
+    let shared = merged.as_array().unwrap().iter().find(|v| v["id"] == "giphy:shared").unwrap();
+    assert_eq!(shared["char"], serde_json::json!(["c1"]));
+    assert_eq!(shared["cat"].as_array().unwrap().len(), CATEGORY_QUERIES.len());
 }

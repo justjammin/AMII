@@ -1,0 +1,67 @@
+# Runs the Claude curator agent (agent/) to find new GIPHY GIFs per AMII character, then opens a
+# pull request with the manifest changes so a human reviews every addition before it ships.
+#
+# Needs: secret ANTHROPIC_API_KEY, and repository variable AMII_API_URL pointing at your deployed
+# AMII API (with GIPHY_API_KEY set on it), e.g. https://<app>.fly.dev/public/
+name: Curate GIPHY character manifest
+
+on:
+  workflow_dispatch:
+    inputs:
+      characters:
+        description: Comma-separated character names or ids (blank = the ones with the fewest GIFs)
+        required: false
+      limit:
+        description: How many characters when none are named
+        default: "10"
+      target:
+        description: New GIFs to aim for per character
+        default: "12"
+  schedule:
+    - cron: "41 7 1 * *" # monthly
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  curate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      AMII_API_URL: ${{ vars.AMII_API_URL }}
+    steps:
+      - name: Skip when not configured
+        if: env.ANTHROPIC_API_KEY == '' || env.AMII_API_URL == ''
+        run: echo "::notice::Set secret ANTHROPIC_API_KEY and variable AMII_API_URL to run the curator."
+      - uses: actions/checkout@v4
+        if: env.ANTHROPIC_API_KEY != '' && env.AMII_API_URL != ''
+      - uses: actions/setup-node@v4
+        if: env.ANTHROPIC_API_KEY != '' && env.AMII_API_URL != ''
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: agent/package-lock.json
+      - name: Curate
+        if: env.ANTHROPIC_API_KEY != '' && env.AMII_API_URL != ''
+        working-directory: agent
+        env:
+          CHARACTERS: ${{ inputs.characters }}
+        run: |
+          npm ci
+          npx tsc -p .
+          args=(--api "$AMII_API_URL" --limit "${{ inputs.limit || '10' }}" --target "${{ inputs.target || '12' }}")
+          if [ -n "$CHARACTERS" ]; then args+=(--characters "$CHARACTERS"); fi
+          node out/src/cli.js "${args[@]}" | tee curate.log
+          { echo '```'; tail -n 40 curate.log; echo '```'; } > pr-body.md
+      - name: Open pull request for review
+        if: env.ANTHROPIC_API_KEY != '' && env.AMII_API_URL != ''
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: giphy-manifest/update
+          add-paths: api/manifests/giphy-characters.json
+          commit-message: "Curate GIPHY character manifest"
+          title: "Curated GIPHY GIFs for AMII characters"
+          body-path: agent/pr-body.md
+          labels: giphy-manifest

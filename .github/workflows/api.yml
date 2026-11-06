@@ -10,9 +10,9 @@ name: API & VS Code
 on:
   push:
     branches: [main]
-    paths: ["api/**", "cdn/**", "vscode/**", ".github/workflows/api.yml"]
+    paths: ["api/**", "agent/**", "cdn/**", "vscode/**", ".github/workflows/api.yml"]
   pull_request:
-    paths: ["api/**", "cdn/**", "vscode/**", ".github/workflows/api.yml"]
+    paths: ["api/**", "agent/**", "cdn/**", "vscode/**", ".github/workflows/api.yml"]
   workflow_dispatch:
 
 concurrency:
@@ -55,6 +55,21 @@ jobs:
         with:
           name: amii-vscode-vsix
           path: vscode/amii-vscode.vsix
+
+  agent-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: agent/package-lock.json
+      - run: npm ci
+      - run: npm test
 
   cdn-test:
     runs-on: ubuntu-latest

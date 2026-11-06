@@ -67,6 +67,7 @@ pub fn config(base: &str, fresh: Duration) -> Config {
             hourly_budget: 90,
             per_category: 25,
             max_gif_bytes: 4 << 20,
+            manifest: None,
         },
         giphy_cache: cache,
     }

@@ -92,6 +92,7 @@ Then in VS Code settings:
 | `GIPHY_TTL_SECS` / `GIPHY_STALE_TTL_SECS` | `21600` / `604800` |
 | `GIPHY_CACHE_MB` | `32` |
 | `GIPHY_MAX_GIF_MB` | `4` (largest rendition handed to editors) |
+| `GIPHY_MANIFEST` | `/manifests/giphy-characters.json` in the image. A curated per-character manifest (path or URL) from [`../agent`](../agent/README.md), merged into `/public/giphy/visuals` with character ids; served even without `GIPHY_API_KEY` |
 | `RUST_LOG` | `amii_api=info,tower_http=info` |
 
 ## Test

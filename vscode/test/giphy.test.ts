@@ -41,6 +41,17 @@ describe('GIPHY source', () => {
     const pick = repo.pick([MemeCategory.Smug], prefs);
     assert.equal(pick?.source.kind, 'giphy');
 
+    // Curated entries carry character ids, so preferred-character filtering works for GIPHY too.
+    const curated = new VisualRepository();
+    curated.index({ anime: [{ id: 'a1', name: 'KonoSuba' }], characters: [{ id: 'c1', animeId: 'a1', name: 'Aqua', gender: 0 }], visuals: [], audible: [] });
+    curated.indexGiphy([
+      { id: 'giphy:x', alt: 'Aqua smirk', cat: [5], char: ['c1'], url: 'https://media.giphy.com/media/x/giphy.gif', page: '', source: 'giphy' },
+      { id: 'giphy:y', alt: 'someone else', cat: [5], url: 'https://media.giphy.com/media/y/giphy.gif', page: '', source: 'giphy' },
+    ]);
+    for (let i = 0; i < 5; i++) {
+      assert.equal(curated.pick([MemeCategory.Smug], { ...prefs, preferredCharacters: ['Aqua'] })?.id, 'giphy:x');
+    }
+
     const [f1, f2] = await Promise.all([store.resolveUrl(items[0].url), store.resolveUrl(items[0].url)]);
     assert.equal(f1, f2);
     assert.equal(await fs.readFile(f1!, 'utf8'), 'GIF89a');

@@ -35,6 +35,8 @@ export interface GiphyVisualRepresentation extends Representation {
   alt: string;
   cat: number[];
   lewd?: boolean;
+  /** AMII character ids, for GIFs from the curated manifest. */
+  char?: string[];
   url: string;
   /** GIPHY page, for attribution. */
   page: string;

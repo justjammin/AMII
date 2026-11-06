@@ -8,6 +8,9 @@ RUN cargo build --release --locked --bin amii-api
 
 FROM gcr.io/distroless/cc-debian12
 COPY --from=build /src/target/release/amii-api /usr/local/bin/amii-api
+# Curated GIPHY-per-character manifest (written by agent/, reviewed in PRs).
+COPY manifests /manifests
+ENV GIPHY_MANIFEST=/manifests/giphy-characters.json
 ENV PORT=8080
 EXPOSE 8080
 USER nonroot

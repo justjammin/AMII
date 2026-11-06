@@ -138,6 +138,10 @@ pub struct Images {
     pub fixed_width: Option<Rendition>,
     pub fixed_height_small: Option<Rendition>,
     pub preview_gif: Option<Rendition>,
+    /// First-frame stills (static GIF/JPEG): cheap thumbnails, e.g. for vision models.
+    pub original_still: Option<Rendition>,
+    pub fixed_height_still: Option<Rendition>,
+    pub downsized_still: Option<Rendition>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -169,6 +173,15 @@ impl Gif {
             .filter(|r| !r.url.is_empty())
             .find(|r| r.size.is_none_or(|s| s <= max_bytes))
             .or(i.fixed_height_small.as_ref().filter(|r| !r.url.is_empty()))
+    }
+
+    /// A small still frame of the GIF, if GIPHY provided one.
+    pub fn still(&self) -> Option<&Rendition> {
+        let i = &self.images;
+        [&i.fixed_height_still, &i.downsized_still, &i.original_still]
+            .into_iter()
+            .flatten()
+            .find(|r| !r.url.is_empty())
     }
 
     /// Human readable title without GIPHY's trailing " GIF by user" / " GIF".
@@ -418,6 +431,12 @@ mod tests {
         assert_eq!(gif.best_rendition(5_000_000).unwrap().url, "https://media.giphy.com/a.gif");
         assert_eq!(gif.best_rendition(1_000_000).unwrap().url, "https://media.giphy.com/d.gif");
         assert_eq!(gif.best_rendition(10).unwrap().url, "https://media.giphy.com/f.gif");
+        assert!(gif.still().is_none());
+        let with_still: Gif = serde_json::from_str(
+            r#"{"id":"s","images":{"fixed_height_still":{"url":"https://media.giphy.com/s_s.gif"}}}"#,
+        )
+        .unwrap();
+        assert_eq!(with_still.still().unwrap().url, "https://media.giphy.com/s_s.gif");
     }
 
     #[test]

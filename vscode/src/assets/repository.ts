@@ -89,7 +89,7 @@ export class VisualRepository {
       id: g.id,
       alt: g.alt || 'GIPHY',
       categories: new Set(g.cat as MemeCategory[]),
-      characters: [],
+      characters: (g.char ?? []).map((id) => this.characters.get(id)).filter((c): c is Character => !!c),
       lewd: g.lewd === true,
       source: { kind: 'giphy', url: g.url, page: g.page },
     }));
